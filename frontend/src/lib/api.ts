@@ -1,4 +1,8 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const getApiBase = (): string => {
+  const url = process.env.NEXT_PUBLIC_API_URL || "https://leaddiscovery.onrender.com";
+  return url.replace(/\/+$/, "");
+};
+const API_BASE = getApiBase();
 
 export interface User {
   id: number;

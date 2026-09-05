@@ -39,12 +39,28 @@ app = FastAPI(
 )
 
 # Enable CORS for frontend integration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+def parse_cors_origins():
+    origins_str = getattr(settings, "CORS_ORIGINS", "")
+    if isinstance(origins_str, list):
+        origins = origins_str
+    elif isinstance(origins_str, str) and origins_str.strip():
+        origins = [o.strip() for o in origins_str.split(",") if o.strip()]
+    else:
+        origins = []
+    
+    defaults = [
+        "https://leaddiscovery.vercel.app",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-    ],
+    ]
+    for d in defaults:
+        if d not in origins:
+            origins.append(d)
+    return origins
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=parse_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
