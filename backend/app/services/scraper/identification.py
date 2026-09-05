@@ -103,29 +103,98 @@ def is_generic_listing_page(name: str, url: str = "") -> Tuple[bool, str]:
         return True, f"Generic Page Filter: {reason} ({meta.get('entity_type')})"
     return False, "PASS"
 
+def normalize_category_and_subcategory(category_str: str) -> Tuple[str, str]:
+    """
+    Normalizes user-specified category string into generic (category, sub_category).
+    Examples:
+      'CBSE school' -> ('SCHOOL', 'CBSE')
+      'Matriculation school' -> ('SCHOOL', 'MATRICULATION')
+      'International school' -> ('SCHOOL', 'INTERNATIONAL')
+      'school' -> ('SCHOOL', 'SCHOOL')
+      'Engineering college' -> ('COLLEGE', 'ENGINEERING')
+      'Arts and science college' -> ('COLLEGE', 'ARTS_SCIENCE')
+      'college' -> ('COLLEGE', 'COLLEGE')
+      'Multispecialty hospital' -> ('HOSPITAL', 'MULTISPECIALTY')
+      'hospital' -> ('HOSPITAL', 'HOSPITAL')
+      'hotel' -> ('HOTEL', 'HOTEL')
+      'Software company' -> ('SOFTWARE_COMPANY', 'SOFTWARE_COMPANY')
+    """
+    if not category_str:
+        return "OTHER", "OTHER"
+
+    cat_low = category_str.lower().strip()
+
+    # Schools
+    if "cbse" in cat_low and "school" in cat_low:
+        return "SCHOOL", "CBSE"
+    elif "matriculation" in cat_low or "matric" in cat_low:
+        return "SCHOOL", "MATRICULATION"
+    elif "international" in cat_low and "school" in cat_low:
+        return "SCHOOL", "INTERNATIONAL"
+    elif "school" in cat_low or "schools" in cat_low:
+        return "SCHOOL", "SCHOOL"
+
+    # Colleges
+    if "engineering" in cat_low:
+        return "COLLEGE", "ENGINEERING"
+    elif "arts" in cat_low or "science" in cat_low:
+        return "COLLEGE", "ARTS_SCIENCE"
+    elif "college" in cat_low or "colleges" in cat_low or "university" in cat_low:
+        return "COLLEGE", "COLLEGE"
+
+    # Hospitals
+    if "multispecialty" in cat_low or "multi specialty" in cat_low:
+        return "HOSPITAL", "MULTISPECIALTY"
+    elif "hospital" in cat_low or "hospitals" in cat_low or "clinic" in cat_low:
+        return "HOSPITAL", "HOSPITAL"
+
+    # Hotels
+    if "hotel" in cat_low or "hotels" in cat_low or "resort" in cat_low:
+        return "HOTEL", "HOTEL"
+
+    # Software / IT Companies
+    if "software" in cat_low or "it company" in cat_low or "tech" in cat_low:
+        return "SOFTWARE_COMPANY", "SOFTWARE_COMPANY"
+
+    clean_tok = re.sub(r'[^a-zA-Z0-9]', '_', cat_low).upper().strip('_')
+    return clean_tok or "OTHER", clean_tok or "OTHER"
+
+
 def verify_category_match(requested_category: str, candidate_name: str, candidate_category: str = "", candidate_url: str = "") -> Tuple[bool, str]:
     """
     Dynamically verifies whether candidate matches the user-requested organization category.
-    Works for ANY requested category (CBSE school, hotel, college, hospital, software company, etc.).
+    Enforces strict subcategory matching (e.g. CBSE school vs generic matriculation school).
     """
     req_low = requested_category.lower().strip()
     cand_low = candidate_name.lower().strip()
+    url_low = (candidate_url or "").lower().strip()
+    combined = f"{cand_low} {url_low}"
 
-    if "cbse" in req_low:
-        if any(bad in cand_low for bad in ["cbse result", "cbse exam", "cbse board", "cbse syllabus", "sample paper", "date sheet", "admit card"]):
-            return False, "CATEGORY_MISMATCH (Exam/Board result page)"
-        if not any(good in cand_low for good in ["school", "vidyalaya", "academy", "convent", "matriculation", "gurukul", "public school", "high school", "cbse"]):
-            return False, f"CATEGORY_MISMATCH (Candidate '{candidate_name}' does not indicate a school entity)"
-    elif "school" in req_low:
+    req_cat, req_subcat = normalize_category_and_subcategory(requested_category)
+
+    if req_cat == "SCHOOL":
         if any(conf in cand_low for conf in ["hospital", "hotel", "resort", "college", "university"]):
             return False, f"CATEGORY_MISMATCH (Candidate conflicts with school category)"
-    elif "hotel" in req_low or "resort" in req_low:
+            
+        if req_subcat == "CBSE":
+            if any(bad in cand_low for bad in ["cbse result", "cbse exam", "cbse board", "cbse syllabus", "sample paper", "date sheet", "admit card"]):
+                return False, "CATEGORY_MISMATCH (Exam/Board result page)"
+            # Must have school indicator
+            if not any(good in cand_low for good in ["school", "vidyalaya", "academy", "convent", "gurukul", "public school", "high school", "cbse"]):
+                return False, f"CATEGORY_MISMATCH (Candidate '{candidate_name}' does not indicate a school entity)"
+            # Generic non-CBSE school check: matriculation without cbse evidence is rejected for CBSE search
+            if "matriculation" in cand_low and "cbse" not in combined:
+                return False, f"CATEGORY_MISMATCH (Candidate '{candidate_name}' is a Matriculation school, not a CBSE school)"
+
+    elif req_cat == "HOTEL":
         if any(conf in cand_low for conf in ["school", "college", "university", "hospital"]):
             return False, f"CATEGORY_MISMATCH (Candidate conflicts with hotel category)"
-    elif "hospital" in req_low or "clinic" in req_low:
+
+    elif req_cat == "HOSPITAL":
         if any(conf in cand_low for conf in ["school", "college", "university", "hotel", "resort"]):
             return False, f"CATEGORY_MISMATCH (Candidate conflicts with hospital category)"
-    elif "college" in req_low or "university" in req_low:
+
+    elif req_cat == "COLLEGE":
         if any(conf in cand_low for conf in ["hospital", "hotel", "resort"]):
             return False, f"CATEGORY_MISMATCH (Candidate conflicts with college category)"
 

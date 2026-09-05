@@ -76,7 +76,7 @@ def test_api_auth_flow_and_tasks():
         )
         assert response.status_code == 201
         task = response.json()
-        assert task["status"] == "PENDING"
+        assert task["status"] in ("PENDING", "RUNNING", "COMPLETED")
         assert "TASK-" in task["public_task_id"]
         
         # 5. Fetch all tasks history

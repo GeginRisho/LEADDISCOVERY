@@ -1,82 +1,197 @@
 import re
 from typing import Dict, Any, Tuple, Set, Optional
 
-# Administrative Districts of Tamil Nadu & Union Territory of Puducherry
+# Administrative Districts of Tamil Nadu (All 38 Districts) & Union Territory of Puducherry
 TN_DISTRICTS_DATA = {
+    "ariyalur": {
+        "district": "Ariyalur",
+        "state": "Tamil Nadu",
+        "cities_towns": {"ariyalur", "jayankondam", "sendurai", "andimadam"}
+    },
+    "chengalpattu": {
+        "district": "Chengalpattu",
+        "state": "Tamil Nadu",
+        "cities_towns": {"chengalpattu", "kancheepuram", "chromepet", "pallavaram", "tambaram", "vandalur", "guduvancheri", "chengalpet", "maduranthakam", "cheyyur", "mamallapuram", "mahabalipuram"}
+    },
+    "chennai": {
+        "district": "Chennai",
+        "state": "Tamil Nadu",
+        "cities_towns": {"chennai", "madras", "gopalapuram", "adyar", "anna nagar", "t nagar", "velachery", "tambaram", "guindy", "chromepet", "porur", "royapettah", "mylapore", "egmore", "kilpauk", "perambur", "tnagar"}
+    },
+    "coimbatore": {
+        "district": "Coimbatore",
+        "state": "Tamil Nadu",
+        "cities_towns": {"coimbatore", "pollachi", "metupalayam", "mettupalayam", "sulur", "annur", "kinathukadavu", "valparai"}
+    },
+    "cuddalore": {
+        "district": "Cuddalore",
+        "state": "Tamil Nadu",
+        "cities_towns": {"cuddalore", "chidambaram", "panruti", "virudhachalam", "neiveli", "neyveli", "kattumannarkoil", "bhuvanagiri"}
+    },
+    "dharmapuri": {
+        "district": "Dharmapuri",
+        "state": "Tamil Nadu",
+        "cities_towns": {"dharmapuri", "harur", "palacode", "pennagaram", "pappireddipatti"}
+    },
+    "dindigul": {
+        "district": "Dindigul",
+        "state": "Tamil Nadu",
+        "cities_towns": {"dindigul", "kodaikanal", "palani", "oddanchatram", "neduvasal", "natham", "nakkal", "nilakottai"}
+    },
     "erode": {
         "district": "Erode",
         "state": "Tamil Nadu",
         "cities_towns": {"erode", "bhavani", "gobichettipalayam", "gobi", "sathyamangalam", "sathy", "perundurai", "anthiyur", "kodumudi", "modakkurichi", "chennimalai", "nambiyur", "thalavadi", "kalingarayanpalayam"}
     },
+    "kallakurichi": {
+        "district": "Kallakurichi",
+        "state": "Tamil Nadu",
+        "cities_towns": {"kallakurichi", "sankarapuram", "chinhasalem", "chinnasalem", "ulundurpet", "tirukoilur"}
+    },
+    "kanchipuram": {
+        "district": "Kanchipuram",
+        "state": "Tamil Nadu",
+        "cities_towns": {"kanchipuram", "kancheepuram", "sriperumbudur", "walajabad", "uttiramerur"}
+    },
     "kanyakumari": {
         "district": "Kanyakumari",
         "state": "Tamil Nadu",
-        "cities_towns": {"kanyakumari", "nagercoil", "thuckalay", "marthandam", "colachel", "padmanabhapuram", "karungal", "kuzhithurai", "agastheeswaram"}
-    },
-    "salem": {
-        "district": "Salem",
-        "state": "Tamil Nadu",
-        "cities_towns": {"salem", "mettur", "omalur", "attur", "sankari", "yercaud", "edappadi", "valapady"}
-    },
-    "coimbatore": {
-        "district": "Coimbatore",
-        "state": "Tamil Nadu",
-        "cities_towns": {"coimbatore", "pollachi", "metupalayam", "sulur", "annur", "kinathukadavu", "valparai"}
-    },
-    "chennai": {
-        "district": "Chennai",
-        "state": "Tamil Nadu",
-        "cities_towns": {"chennai", "madras", "gopalapuram", "adyar", "anna nagar", "t nagar", "velachery", "tambaram", "guindy", "chromepet", "porur"}
-    },
-    "tiruchirappalli": {
-        "district": "Tiruchirappalli",
-        "state": "Tamil Nadu",
-        "cities_towns": {"tiruchirappalli", "trichy", "srirangam", "lalgudi", "manapparai", "thottiyam", "musiri"}
-    },
-    "madurai": {
-        "district": "Madurai",
-        "state": "Tamil Nadu",
-        "cities_towns": {"madurai", "melur", "thirumangalam", "usilampatti", "vadipatti", "sholavandan"}
-    },
-    "tiruppur": {
-        "district": "Tiruppur",
-        "state": "Tamil Nadu",
-        "cities_towns": {"tiruppur", "tirupur", "avanashi", "udumalaipettai", "udumalpet", "dharapuram", "kangeyam", "palladam"}
-    },
-    "vellore": {
-        "district": "Vellore",
-        "state": "Tamil Nadu",
-        "cities_towns": {"vellore", "katpadi", "gudiyatham", "anaicut", "pernamallur"}
-    },
-    "thanjavur": {
-        "district": "Thanjavur",
-        "state": "Tamil Nadu",
-        "cities_towns": {"thanjavur", "kumbakonam", "pattukkottai", "orathanadu", "thiruvaiyaru"}
-    },
-    "dindigul": {
-        "district": "Dindigul",
-        "state": "Tamil Nadu",
-        "cities_towns": {"dindigul", "kodaikanal", "palani", "oddanchatram", "neduvasal"}
-    },
-    "tirunelveli": {
-        "district": "Tirunelveli",
-        "state": "Tamil Nadu",
-        "cities_towns": {"tirunelveli", "palayamkottai", "nanguneri", "radhapuram", "ambasamudram"}
+        "cities_towns": {"kanyakumari", "kanniyakumari", "nagercoil", "thuckalay", "marthandam", "colachel", "padmanabhapuram", "karungal", "kuzhithurai", "agastheeswaram"}
     },
     "karur": {
         "district": "Karur",
         "state": "Tamil Nadu",
         "cities_towns": {"karur", "kulithalai", "aravakurichi", "krishnarayapuram"}
     },
+    "krishnagiri": {
+        "district": "Krishnagiri",
+        "state": "Tamil Nadu",
+        "cities_towns": {"krishnagiri", "hosur", "denkanikottai", "pochampalli", "bargur", "uthangarai"}
+    },
+    "madurai": {
+        "district": "Madurai",
+        "state": "Tamil Nadu",
+        "cities_towns": {"madurai", "melur", "thirumangalam", "usilampatti", "vadipatti", "sholavandan"}
+    },
+    "mayiladuthurai": {
+        "district": "Mayiladuthurai",
+        "state": "Tamil Nadu",
+        "cities_towns": {"mayiladuthurai", "sirkali", "tharangambadi", "kuthalam"}
+    },
+    "nagapattinam": {
+        "district": "Nagapattinam",
+        "state": "Tamil Nadu",
+        "cities_towns": {"nagapattinam", "velankanni", "kilvelur", "vedaranyam"}
+    },
     "namakkal": {
         "district": "Namakkal",
         "state": "Tamil Nadu",
-        "cities_towns": {"namakkal", "rasipuram", "tiruchengodu", "paramathi velur"}
+        "cities_towns": {"namakkal", "rasipuram", "tiruchengodu", "paramathi velur", "komarapalayam"}
     },
-    "cuddalore": {
-        "district": "Cuddalore",
+    "nilgiris": {
+        "district": "Nilgiris",
         "state": "Tamil Nadu",
-        "cities_towns": {"cuddalore", "chidambaram", "panruti", "virudhachalam", "neiveli"}
+        "cities_towns": {"ooty", "udhagamandalam", "coonoor", "gudalur", "kotagiri", "kundah"}
+    },
+    "perambalur": {
+        "district": "Perambalur",
+        "state": "Tamil Nadu",
+        "cities_towns": {"perambalur", "veppanthattai", "kunnam", "alagapuram"}
+    },
+    "pudukkottai": {
+        "district": "Pudukkottai",
+        "state": "Tamil Nadu",
+        "cities_towns": {"pudukkottai", "aranthangi", "viralimalai", "gandarvakottai", "thirumayam", "ponnamaravathi"}
+    },
+    "ramanathapuram": {
+        "district": "Ramanathapuram",
+        "state": "Tamil Nadu",
+        "cities_towns": {"ramanathapuram", "ramnad", "rameswaram", "paramakudi", "kilakarai", "mudukulathur"}
+    },
+    "ranipet": {
+        "district": "Ranipet",
+        "state": "Tamil Nadu",
+        "cities_towns": {"ranipet", "arrakonam", "arakkonam", "arcot", "walajah", "sholinghur"}
+    },
+    "salem": {
+        "district": "Salem",
+        "state": "Tamil Nadu",
+        "cities_towns": {"salem", "mettur", "omalur", "attur", "sankari", "yercaud", "edappadi", "valapady"}
+    },
+    "sivaganga": {
+        "district": "Sivaganga",
+        "state": "Tamil Nadu",
+        "cities_towns": {"sivaganga", "karaikudi", "devakottai", "manamadurai", "thirupuvanam", "kalaiyarkoil"}
+    },
+    "tenkasi": {
+        "district": "Tenkasi",
+        "state": "Tamil Nadu",
+        "cities_towns": {"tenkasi", "sankarankovil", "kadayanallur", "courtallam", "puliangudi", "shenkottai"}
+    },
+    "thanjavur": {
+        "district": "Thanjavur",
+        "state": "Tamil Nadu",
+        "cities_towns": {"thanjavur", "kumbakonam", "pattukkottai", "orathanadu", "thiruvaiyaru"}
+    },
+    "theni": {
+        "district": "Theni",
+        "state": "Tamil Nadu",
+        "cities_towns": {"theni", "periyakulam", "bodinayakanur", "cumbum", "andipatti", "uthamapalayam"}
+    },
+    "thoothukudi": {
+        "district": "Thoothukudi",
+        "state": "Tamil Nadu",
+        "cities_towns": {"thoothukudi", "tuticorin", "tiruchendur", "kovilpatti", "sathankulam", "srivaikuntam"}
+    },
+    "tiruchirappalli": {
+        "district": "Tiruchirappalli",
+        "state": "Tamil Nadu",
+        "cities_towns": {"tiruchirappalli", "trichy", "srirangam", "lalgudi", "manapparai", "thottiyam", "musiri"}
+    },
+    "tirunelveli": {
+        "district": "Tirunelveli",
+        "state": "Tamil Nadu",
+        "cities_towns": {"tirunelveli", "palayamkottai", "nanguneri", "radhapuram", "ambasamudram"}
+    },
+    "tirupathur": {
+        "district": "Tirupathur",
+        "state": "Tamil Nadu",
+        "cities_towns": {"tirupathur", "vaniyambadi", "ambur", "natarampalli"}
+    },
+    "tiruppur": {
+        "district": "Tiruppur",
+        "state": "Tamil Nadu",
+        "cities_towns": {"tiruppur", "tirupur", "avanashi", "udumalaipettai", "udumalpet", "dharapuram", "kangeyam", "palladam"}
+    },
+    "tiruvallur": {
+        "district": "Tiruvallur",
+        "state": "Tamil Nadu",
+        "cities_towns": {"tiruvallur", "avadi", "ponneri", "gummidipoondi", "tiruttani", "poonamallee"}
+    },
+    "tiruvannamalai": {
+        "district": "Tiruvannamalai",
+        "state": "Tamil Nadu",
+        "cities_towns": {"tiruvannamalai", "arani", "cheyyar", "polur", "chengam", "wandiwash"}
+    },
+    "tiruvarur": {
+        "district": "Tiruvarur",
+        "state": "Tamil Nadu",
+        "cities_towns": {"tiruvarur", "mannargudi", "thiruthuraipoondi", "nannilam", "kodavasal"}
+    },
+    "vellore": {
+        "district": "Vellore",
+        "state": "Tamil Nadu",
+        "cities_towns": {"vellore", "katpadi", "gudiyatham", "anaicut", "pernamallur"}
+    },
+    "viluppuram": {
+        "district": "Viluppuram",
+        "state": "Tamil Nadu",
+        "cities_towns": {"viluppuram", "villupuram", "tindivanam", "gingee", "vanur"}
+    },
+    "virudhunagar": {
+        "district": "Virudhunagar",
+        "state": "Tamil Nadu",
+        "cities_towns": {"virudhunagar", "sivakasi", "rajapalayam", "satur", "aruppukottai", "srivilliputhur"}
     },
     "puducherry": {
         "district": "Puducherry",

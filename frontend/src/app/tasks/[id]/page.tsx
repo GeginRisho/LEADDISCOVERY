@@ -235,29 +235,54 @@ export default function TaskDetailsPage() {
               onClick={handleCancel}
               className="flex items-center gap-2 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs active:scale-[0.98]"
             >
-              <Ban className="h-4 w-4" /> Cancel Task
+              <Ban className="h-4 w-4" /> Cancel Background Discovery
             </button>
           )}
 
-          {!isRunning && leads.length > 0 && (
+          {leads.length > 0 && (
             <>
               <button
                 onClick={() => handleSecureExport("csv")}
                 disabled={exporting !== null}
                 className="flex items-center gap-2 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50"
               >
-                <Download className="h-4 w-4 text-orange-500" /> Export CSV
+                <Download className="h-4 w-4 text-orange-500" /> Export CSV ({leads.length})
               </button>
               <button
                 onClick={() => handleSecureExport("excel")}
                 disabled={exporting !== null}
                 className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-orange-500/20 active:scale-[0.98] disabled:opacity-50"
               >
-                <FileSpreadsheet className="h-4 w-4" /> Export Excel
+                <FileSpreadsheet className="h-4 w-4" /> Export Excel ({leads.length})
               </button>
             </>
           )}
         </div>
+      </div>
+
+      {/* FAST RESULTS + BACKGROUND DISCOVERY STATUS BANNER */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
+          <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0" />
+          <div>
+            <div className="text-xs font-bold text-emerald-900 uppercase tracking-wide">Fast Verified Results</div>
+            <div className="text-sm font-black text-emerald-800">
+              {leads.length} Verified {leads.length === 1 ? "Organization" : "Organizations"} Available
+            </div>
+          </div>
+        </div>
+
+        {isRunning && (
+          <div className="bg-orange-50/90 border border-orange-200 rounded-xl p-4 flex items-center gap-3 animate-pulse">
+            <Loader2 className="h-5 w-5 text-orange-600 animate-spin shrink-0" />
+            <div>
+              <div className="text-xs font-bold text-orange-900 uppercase tracking-wide">Background Discovery</div>
+              <div className="text-sm font-black text-orange-800">
+                Searching for additional verified organizations...
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* BELOW MINIMUM DIAGNOSTIC ALERT */}

@@ -43,6 +43,24 @@ def audit_and_cleanup_database():
             print(f"[PURGE ORGANISATION] Deleting invalid record ID {org.id}: '{safe_name}' (Reason: {id_reason})")
             db.delete(org)
             purged_org_count += 1
+        else:
+            # Backfill normalized category and sub_category
+            from app.services.scraper.identification import normalize_category_and_subcategory
+            cat_str = org.category or (org.task.keyword if org.task else "SCHOOL")
+            norm_cat, norm_subcat = normalize_category_and_subcategory(cat_str)
+            org.category = norm_cat
+            org.sub_category = norm_subcat
+            
+            # Ensure verification flags & high confidence on clean orgs with official website
+            if org.official_website_url and not is_directory_domain(org.official_website_url):
+                org.identity_verified = True
+                org.category_verified = True
+                org.country_verified = True
+                org.state_verified = True
+                org.district_verified = True
+                org.location_verified = True
+                org.official_website_verified = True
+                org.confidence = "HIGH"
 
     db.commit()
     

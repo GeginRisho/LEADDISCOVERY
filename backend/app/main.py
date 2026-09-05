@@ -9,7 +9,7 @@ load_dotenv()
 
 from app.core.config import settings
 from app.core.database import engine, Base, migrate_schema
-from app.api import auth, tasks, leads, admin, organizations, campaigns
+from app.api import auth, tasks, leads, admin, organizations, campaigns, search
 
 # Create database tables automatically on startup
 try:
@@ -57,6 +57,7 @@ app.include_router(leads.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(organizations.router, prefix="/api")
 app.include_router(campaigns.router, prefix="/api")
+app.include_router(search.router, prefix="/api")
 
 @app.get("/", include_in_schema=False)
 def root():

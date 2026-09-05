@@ -96,7 +96,8 @@ class Organization(Base):
     district_id = Column(Integer, ForeignKey("districts.id", ondelete="SET NULL"), nullable=True, index=True)
     
     name = Column(String(255), nullable=False)
-    category = Column(String(255), nullable=True)
+    category = Column(String(255), nullable=True, index=True)
+    sub_category = Column(String(255), nullable=True, index=True)
     discovery_source_url = Column(Text, nullable=True) # E.g. DuckDuckGo / SARAS directory URL
     
     # Address & Location details
@@ -143,6 +144,12 @@ class Organization(Base):
         Index("idx_org_name", "name"),
         Index("idx_org_district", "district"),
         Index("idx_org_category", "category"),
+        Index("idx_org_sub_category", "sub_category"),
+        Index("idx_org_cat_sub_dist", "category", "sub_category", "district"),
+        Index("idx_org_cat_sub_city", "category", "sub_category", "city"),
+        Index("idx_org_cat_sub_state", "category", "sub_category", "state"),
+        Index("idx_org_loc_full", "country", "state", "district"),
+        Index("idx_org_verified_all", "location_verified", "official_website_verified", "identity_verified", "category_verified"),
     )
 
 class DiscoveryCampaign(Base):

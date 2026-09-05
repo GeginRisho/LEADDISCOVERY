@@ -80,7 +80,13 @@ def migrate_schema(eng):
         "ALTER TABLE task_leads ADD COLUMN location_verified BOOLEAN DEFAULT TRUE",
         "ALTER TABLE task_leads ADD COLUMN official_website_verified BOOLEAN DEFAULT TRUE",
         "ALTER TABLE task_leads ADD COLUMN verification_reason TEXT NULL",
-        "ALTER TABLE phone_numbers ALTER COLUMN raw_value TYPE TEXT",
+        "ALTER TABLE organizations ADD COLUMN sub_category VARCHAR(255) NULL",
+        "CREATE INDEX IF NOT EXISTS idx_org_sub_category ON organizations(sub_category)",
+        "CREATE INDEX IF NOT EXISTS idx_org_cat_sub_dist ON organizations(category, sub_category, district)",
+        "CREATE INDEX IF NOT EXISTS idx_org_cat_sub_city ON organizations(category, sub_category, city)",
+        "CREATE INDEX IF NOT EXISTS idx_org_cat_sub_state ON organizations(category, sub_category, state)",
+        "CREATE INDEX IF NOT EXISTS idx_org_loc_full ON organizations(country, state, district)",
+        "CREATE INDEX IF NOT EXISTS idx_org_verified_all ON organizations(location_verified, official_website_verified, identity_verified, category_verified)",
     ]
     with eng.connect() as conn:
         for stmt in statements:

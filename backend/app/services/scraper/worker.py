@@ -272,6 +272,50 @@ async def run_scraping_task(task_id: int):
 
         active_leads: List[Dict[str, Any]] = []
 
+        # Seed pre-verified leads from fast search path if attached
+        from app.services.scraper.identification import normalize_category_and_subcategory
+        norm_cat, norm_subcat = normalize_category_and_subcategory(task.keyword)
+
+        existing_tls = db.query(TaskLead).filter(TaskLead.task_id == task.id).all()
+        for tl in existing_tls:
+            if tl.organization:
+                org = tl.organization
+                seen_names.add(org.name.lower().strip())
+                if org.official_website_url:
+                    seen_urls.add(org.official_website_url.lower().strip())
+                if org.website and org.website.domain:
+                    seen_urls.add(org.website.domain.lower().strip())
+                
+                active_leads.append({
+                    "name": org.name,
+                    "category": org.category or norm_cat,
+                    "sub_category": org.sub_category or norm_subcat,
+                    "address": org.address,
+                    "city": org.city,
+                    "state": org.state,
+                    "country": org.country,
+                    "pincode": org.pincode,
+                    "domain": org.website.domain if org.website else None,
+                    "official_website_url": org.official_website_url,
+                    "source_url": org.discovery_source_url,
+                    "discovery_source": "FAST_VERIFIED_INDEX",
+                    "emails": [{"email": e.email} for e in org.email_addresses] if org.email_addresses else [],
+                    "phones": [{"normalized_value": p.normalized_value, "raw_value": p.raw_value} for p in org.phone_numbers] if org.phone_numbers else [],
+                    "socials": [],
+                    "people": [],
+                    "identity_verified": True,
+                    "category_verified": True,
+                    "country_verified": True,
+                    "state_verified": True,
+                    "district_verified": True,
+                    "location_verified": True,
+                    "official_website_verified": True,
+                    "confidence": org.confidence
+                })
+
+        if active_leads:
+            log_event(db, task.id, "FAST_INDEX_LOADED", f"Loaded {len(active_leads)} pre-verified master organizations into active task state.")
+
         for prov_name, provider in providers:
             if len(active_leads) >= target_min:
                 break
@@ -540,9 +584,13 @@ async def run_scraping_task(task_id: int):
                             existing_org = db_o
                             break
 
+            cat_norm, subcat_norm = normalize_category_and_subcategory(task.keyword)
+
             if existing_org:
                 updated_orgs_count += 1
                 existing_org.task_id = task.id
+                existing_org.category = cat_norm
+                existing_org.sub_category = subcat_norm
                 existing_org.updated_at = datetime.datetime.utcnow()
                 existing_org.official_website_url = lead["official_website_url"]
                 existing_org.identity_verified = True
@@ -560,7 +608,8 @@ async def run_scraping_task(task_id: int):
                     task_id=task.id,
                     district_id=dist_id,
                     name=lead["name"],
-                    category=lead["category"],
+                    category=cat_norm,
+                    sub_category=subcat_norm,
                     official_website_url=lead["official_website_url"],
                     discovery_source_url=lead["source_url"],
                     address=lead["address"] or None,

@@ -64,6 +64,9 @@ def create_task(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
+    import time
+    t_start = time.time()
+
     # 1. Create task in DB with authenticated user's ID
     task = ScrapingTask(
         user_id=current_user.id,
@@ -81,15 +84,83 @@ def create_task(
     db.commit()
     db.refresh(task)
     
-    # 2. Update to a formatted public task ID using primary key sequence
+    # 2. Formatted public task ID
     task.public_task_id = f"TASK-{task.id:06d}"
     db.commit()
     db.refresh(task)
     
     log_event(db, task.id, "TASK_CREATED", f"Scraping task initialized with ID: {task.public_task_id} by user: {current_user.email}")
 
-    # 3. Dispatch worker asynchronously using BackgroundTasks
-    background_tasks.add_task(run_scraping_task, task.id)
+    # 3. FAST READ PATH: Query Master Organizations verified index immediately
+    from app.services.location_service import normalize_target_location
+    from app.services.scraper.identification import normalize_category_and_subcategory
+    from app.models.models import TaskLead
+
+    norm_cat, norm_subcat = normalize_category_and_subcategory(payload.keyword)
+    target_loc = normalize_target_location(payload.location)
+    target_min = min(15, payload.max_results) if payload.max_results >= 15 else payload.max_results
+
+    query = db.query(Organization).filter(
+        Organization.category == norm_cat,
+        Organization.identity_verified == True,
+        Organization.category_verified == True,
+        Organization.country_verified == True,
+        Organization.state_verified == True,
+        Organization.district_verified == True,
+        Organization.location_verified == True,
+        Organization.official_website_verified == True,
+        Organization.confidence == "HIGH"
+    )
+
+    if norm_subcat and norm_subcat != norm_cat:
+        query = query.filter(Organization.sub_category == norm_subcat)
+
+    if target_loc["target_district"]:
+        query = query.filter(Organization.district == target_loc["target_district"])
+    if target_loc["target_state_or_ut"]:
+        query = query.filter(Organization.state == target_loc["target_state_or_ut"])
+
+    pre_verified_orgs = query.limit(target_min).all()
+
+    # Create immediate TaskLead links
+    for org in pre_verified_orgs:
+        tl = TaskLead(
+            task_id=task.id,
+            organization_id=org.id,
+            qualification_status="QUALIFIED",
+            confidence=org.confidence,
+            identity_verified=True,
+            category_verified=True,
+            location_verified=True,
+            official_website_verified=True
+        )
+        db.add(tl)
+
+    db.commit()
+    sync_task_counters(db, task.id)
+    db.refresh(task)
+
+    fast_count = len(pre_verified_orgs)
+    dur_ms = round((time.time() - t_start) * 1000, 2)
+
+    log_event(
+        db, task.id, "FAST_READ_PATH",
+        f"[FAST READ PATH] Returned {fast_count} pre-verified master organizations in {dur_ms}ms (Target: {target_min})."
+    )
+
+    # 4. Check if target minimum is satisfied by Fast Index
+    if fast_count >= target_min:
+        task.status = "COMPLETED"
+        task.progress = 100
+        task.completed_at = datetime.datetime.utcnow()
+        db.commit()
+        log_event(db, task.id, "TASK_COMPLETED", f"[FAST SEARCH COMPLETED] Target {target_min} satisfied by Fast Verified Index.")
+    else:
+        # Dispatch background discovery ONLY for missing target slots
+        task.status = "RUNNING"
+        task.progress = min(10 + int((fast_count / target_min) * 50), 60) if target_min > 0 else 10
+        db.commit()
+        background_tasks.add_task(run_scraping_task, task.id)
     
     return task
 
