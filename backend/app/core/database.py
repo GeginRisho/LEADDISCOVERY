@@ -1,0 +1,100 @@
+import psycopg2
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.engine.url import make_url
+from app.core.config import settings
+
+def create_database_if_not_exists():
+    db_url = settings.DATABASE_URL
+    if "sqlite" in db_url.lower():
+        return
+    try:
+        url = make_url(db_url)
+        db_name = url.database
+        
+        # Connect to the default 'postgres' database to create the app-specific DB
+        conn = psycopg2.connect(
+            host=url.host or "localhost",
+            port=url.port or 5432,
+            user=url.username or "postgres",
+            password=url.password or "",
+            database="postgres"
+        )
+        conn.autocommit = True
+        cursor = conn.cursor()
+        
+        cursor.execute(f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{db_name}'")
+        exists = cursor.fetchone()
+        if not exists:
+            print(f"Database '{db_name}' does not exist. Creating...")
+            cursor.execute(f"CREATE DATABASE {db_name}")
+            print(f"Database '{db_name}' created successfully.")
+        else:
+            print(f"Database '{db_name}' already exists.")
+        
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Warning: Database check/creation failed: {e}. Attempting connection anyway.")
+
+# Auto-initialize database on import
+create_database_if_not_exists()
+
+engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+def migrate_schema(eng):
+    statements = [
+        "ALTER TABLE users ADD COLUMN role VARCHAR(50) DEFAULT 'USER'",
+        "ALTER TABLE users ADD COLUMN status VARCHAR(50) DEFAULT 'ACTIVE'",
+        "ALTER TABLE scraping_tasks ADD COLUMN user_id INTEGER NULL",
+        "ALTER TABLE scraping_tasks ADD COLUMN requested_fields JSON NULL",
+        "ALTER TABLE scraping_tasks ADD COLUMN required_fields JSON NULL",
+        "ALTER TABLE scraping_tasks ALTER COLUMN required_fields DROP NOT NULL",
+        "ALTER TABLE scraping_tasks ALTER COLUMN requested_fields DROP NOT NULL",
+        "ALTER TABLE scraping_tasks ADD COLUMN new_organizations_count INTEGER DEFAULT 0",
+        "ALTER TABLE scraping_tasks ADD COLUMN updated_organizations_count INTEGER DEFAULT 0",
+        "ALTER TABLE organizations ADD COLUMN discovery_source_url TEXT NULL",
+        "ALTER TABLE organizations ADD COLUMN district_id INTEGER NULL",
+        "ALTER TABLE organizations ADD COLUMN district VARCHAR(100) NULL",
+        "ALTER TABLE organizations ADD COLUMN country VARCHAR(100) DEFAULT 'India'",
+        "ALTER TABLE organizations ADD COLUMN official_website_url TEXT NULL",
+        "ALTER TABLE organizations ADD COLUMN identity_verified BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE organizations ADD COLUMN category_verified BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE organizations ADD COLUMN country_verified BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE organizations ADD COLUMN state_verified BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE organizations ADD COLUMN district_verified BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE organizations ADD COLUMN city_verified BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE organizations ADD COLUMN location_verified BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE organizations ADD COLUMN official_website_verified BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE organizations ADD COLUMN verification_source VARCHAR(100) NULL",
+        "ALTER TABLE organizations ADD COLUMN verification_reason TEXT NULL",
+        "ALTER TABLE organizations ADD COLUMN confidence_score VARCHAR(50) DEFAULT 'LOW'",
+        "ALTER TABLE organizations ADD COLUMN source_type VARCHAR(50) DEFAULT 'AUTOMATIC'",
+        "ALTER TABLE organizations ADD COLUMN last_seen_at TIMESTAMP NULL",
+        "ALTER TABLE organizations ADD COLUMN last_crawled_at TIMESTAMP NULL",
+        "ALTER TABLE organizations ADD COLUMN last_verified_at TIMESTAMP NULL",
+        "ALTER TABLE task_leads ADD COLUMN identity_verified BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE task_leads ADD COLUMN category_verified BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE task_leads ADD COLUMN location_verified BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE task_leads ADD COLUMN official_website_verified BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE task_leads ADD COLUMN verification_reason TEXT NULL",
+        "ALTER TABLE phone_numbers ALTER COLUMN raw_value TYPE TEXT",
+    ]
+    with eng.connect() as conn:
+        for stmt in statements:
+            try:
+                with conn.begin():
+                    conn.execute(text(stmt))
+            except Exception:
+                pass
+
+migrate_schema(engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

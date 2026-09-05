@@ -1,0 +1,65 @@
+# Implementation Checklist & Progress
+
+- [x] **Phase 1: Project Initialization & Dependency Configuration**
+  - [x] Initialize backend structure and frontend structure.
+  - [x] Create `requirements.txt` and install python dependencies.
+  - [x] Set up environment files with no hard-coded secrets.
+- [x] **Phase 2: Database Setup & SQLAlchemy Models**
+  - [x] Initialize PostgreSQL engine.
+  - [x] Create models for `User`, `ScrapingTask`, `Organization`, `Website`, `Contact`, `PhoneNumber`, `EmailAddress`, `SocialLink`, `SourcePage`, `ScrapingLog`.
+  - [x] Implement database initialization script that creates the DB and tables on start.
+- [x] **Phase 3: Authentication and Security Hardening**
+  - [x] Implement secure password hashing (passlib + bcrypt).
+  - [x] Create JWT authentication endpoints.
+  - [x] Build middleware or dependencies to protect routes.
+- [x] **Phase 4: Discovery Provider Abstraction & DuckDuckGo Provider**
+  - [x] Create `DiscoveryProvider` abstract class.
+  - [x] Implement `DuckDuckGoHTMLProvider` using free DuckDuckGo search.
+  - [x] Implement `UserURLProvider` for user-provided website seeds.
+  - [x] Set up clear failure handling when search engine is blocked (no fake mock results).
+- [x] **Phase 5: Official Website Identification**
+  - [x] Normalization of discovered URLs.
+  - [x] Domain matching rules, filtering directories/aggregators (Yelp, FB, TripAdvisor, etc.).
+  - [x] Confidence classification for official website status.
+- [x] **Phase 6: Robots.txt & URL / SSRF Protection**
+  - [x] Implement robust URL validation preventing private IP ranges, localhost, cloud metadata, and link-local.
+  - [x] Create redirect handler that revalidates destinations before following them.
+  - [x] Build robots.txt parsing and caching service.
+- [x] **Phase 7: Two-Level Scraper Crawler**
+  - [x] Build Level 1 crawler using HTTPX + BeautifulSoup.
+  - [x] Implement Playwright Level 2 fallback for JS-rendered websites.
+  - [x] Add crawling restrictions (max pages, depth, timeouts, rate limiting per domain).
+- [x] **Phase 8: Contact & Metadata Extractor**
+  - [x] Extract emails, phones, social links, WhatsApp, contact person.
+  - [x] Track source page URL and extraction technique for every field.
+- [x] **Phase 9: Data Cleaning, Deduplication, & Quality Score**
+  - [x] Clean and normalize phone numbers, emails, addresses.
+  - [x] Implement composite scoring for duplicate detection.
+  - [x] Calculate lead quality confidence rating (HIGH, MEDIUM, LOW).
+- [x] **Phase 10: Task & Lead REST API Endpoints**
+  - [x] Create CRUD endpoints for tasks and leads.
+  - [x] Implement CSV and Excel export endpoints (pandas/openpyxl).
+- [x] **Phase 11: Live Scraping Background Worker**
+  - [x] Build FastAPI `BackgroundTasks` runner with modular interfaces for future Celery support.
+  - [x] Implement real-time task state and log updater (no fake timers).
+- [x] **Phase 12: Next.js Frontend Initialization**
+  - [x] Run `create-next-app` in non-interactive mode.
+  - [x] Configure Tailwind CSS and postcss styles.
+- [x] **Phase 13: Frontend Auth Screens (Login & Register)**
+  - [x] Form validations and API integrations.
+- [x] **Phase 14: Frontend Dashboard & Scraping Task Form**
+  - [x] Build responsive layout and keyword/location scraping triggers.
+- [x] **Phase 15: Live Scraping Progress Visualizer**
+  - [x] Interface updating counts (discovered, crawled, phones, emails, duplicates).
+- [x] **Phase 16: Leads Table & Lead Details Pages**
+  - [x] Fully-featured data table (search, filter, sort, paginated, copy).
+  - [x] Details view linking back to source URLs.
+- [x] **Phase 17: CSV & Excel Export Trigger**
+  - [x] Add direct download actions.
+- [x] **Phase 18: Automated Tests**
+  - [x] Write tests for SSRF blocker, extractors, normalizers, and APIs.
+- [x] **Phase 19: End-to-End Manual Testing**
+  - [x] Run scraper on local test page or safe public site.
+  - [x] Verify exports and robots compliance.
+- [x] **Phase 20: Documentation & Deployment Setup**
+  - [x] Create comprehensive `README.md` and `docker-compose.yml`.
