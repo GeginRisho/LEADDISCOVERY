@@ -169,6 +169,10 @@ class Organization(Base):
         Index("idx_org_cat_sub_state", "category", "sub_category", "state"),
         Index("idx_org_loc_full", "country", "state", "district"),
         Index("idx_org_verified_all", "location_verified", "official_website_verified", "identity_verified", "category_verified"),
+        Index("idx_org_fast_cat_dist", "category", "district", "admin_verified", "official_website_verified"),
+        Index("idx_org_fast_cat_subcat_dist", "category", "sub_category", "district", "admin_verified", "official_website_verified"),
+        Index("idx_org_fast_cat_state", "category", "state", "admin_verified", "official_website_verified"),
+        Index("idx_org_fast_cat_city", "category", "city", "admin_verified", "official_website_verified"),
     )
 
 class OrgBranch(Base):

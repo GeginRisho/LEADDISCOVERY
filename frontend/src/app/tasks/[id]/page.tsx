@@ -17,7 +17,6 @@ export default function TaskDetailsPage() {
   const taskId = params.id as string;
 
   const [task, setTask] = useState<ScrapingTask | null>(null);
-  const [logs, setLogs] = useState<ScrapingLog[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
@@ -37,23 +36,18 @@ export default function TaskDetailsPage() {
       try {
         setLoading(true);
         setTaskError(null);
-        const t = await api.getTask(taskId);
-        if (isMounted) setTask(t);
+        
+        const taskPromise = api.getTask(taskId).then((t) => {
+          if (isMounted) setTask(t);
+          return t;
+        });
 
-        try {
-          const l = await api.getTaskLogs(taskId);
-          if (isMounted) setLogs(l);
-        } catch (logErr) {
-          console.error("Failed to fetch logs", logErr);
-        }
-
-        try {
-          const le = await api.getTaskLeads(taskId);
+        const leadsPromise = api.getTaskLeads(taskId).then((le) => {
           if (isMounted) setLeads(le);
-        } catch (leadErr) {
-          console.error("Failed to fetch leads", leadErr);
-        }
+          return le;
+        });
 
+        await Promise.allSettled([taskPromise, leadsPromise]);
       } catch (err: any) {
         if (isMounted) {
           setTaskError(err.message || "Error loading scraping task details.");
@@ -90,11 +84,6 @@ export default function TaskDetailsPage() {
           const updatedTask = await api.getTask(taskId);
           setTask(updatedTask);
           
-          try {
-            const updatedLogs = await api.getTaskLogs(taskId);
-            setLogs(updatedLogs);
-          } catch (e) {}
-
           try {
             const updatedLeads = await api.getTaskLeads(taskId);
             setLeads(updatedLeads);
@@ -330,46 +319,6 @@ export default function TaskDetailsPage() {
             style={{ width: `${task.progress}%` }}
           ></div>
         </div>
-      </div>
-
-      {/* DETAILED STATS ROW */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-        
-        <div className="bg-white border border-gray-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
-          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Discovered</p>
-          <p className="text-2xl font-black text-gray-900">{task.discovered_count}</p>
-        </div>
-        
-        <div className="bg-white border border-gray-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
-          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Websites Found</p>
-          <p className="text-2xl font-black text-emerald-600">{task.websites_found}</p>
-        </div>
-
-        <div className="bg-white border border-gray-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
-          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Crawled</p>
-          <p className="text-2xl font-black text-orange-600">{task.websites_crawled}</p>
-        </div>
-
-        <div className="bg-white border border-gray-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
-          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Emails</p>
-          <p className="text-2xl font-black text-blue-600">{task.email_count}</p>
-        </div>
-
-        <div className="bg-white border border-gray-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
-          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Phones</p>
-          <p className="text-2xl font-black text-indigo-600">{task.phone_count}</p>
-        </div>
-
-        <div className="bg-white border border-gray-200 p-4 rounded-2xl text-center space-y-1 shadow-xs">
-          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Duplicates</p>
-          <p className="text-2xl font-black text-amber-600">{task.duplicate_count}</p>
-        </div>
-
-        <div className="bg-white border border-gray-200 p-4 rounded-2xl text-center space-y-1 shadow-xs col-span-2 md:col-span-1">
-          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Failures</p>
-          <p className="text-2xl font-black text-red-600">{task.failed_count}</p>
-        </div>
-
       </div>
 
       {/* MAIN CONTENT AREA: LEADS DATA TABLE */}
