@@ -229,8 +229,9 @@ for c, d in OTHER_MAJOR_CITIES.items():
 
 def normalize_target_location(location_str: str) -> Dict[str, Any]:
     """
-    Normalizes user-specified location string into structured target components:
-    target_country, target_state_or_ut, target_district, target_city, valid_cities_in_district.
+    Normalizes user-specified location string into structured target components with explicit location scope:
+    target_country, target_state_or_ut, target_district, target_city, location_scope_type, valid_cities_in_district.
+    Scope types: COUNTRY, STATE_UT, DISTRICT, CITY.
     """
     if not location_str:
         return {
@@ -238,20 +239,66 @@ def normalize_target_location(location_str: str) -> Dict[str, Any]:
             "target_state_or_ut": "Tamil Nadu",
             "target_district": "",
             "target_city": "",
+            "location_scope_type": "STATE_UT",
             "valid_cities_in_district": set(),
             "raw_input": location_str
         }
 
     loc_low = location_str.lower().strip()
+
+    # Explicit State/UT query for Puducherry UT
+    is_explicit_ut = any(u in loc_low for u in ["puducherry ut", "pondicherry ut", "union territory", "puducherry state"])
     
-    # Handle Puducherry UT specifically
-    if any(p in loc_low for p in ["puducherry", "pondicherry", "pondy", "karaikal", "mahe", "yanam"]):
+    if is_explicit_ut:
+        return {
+            "target_country": "India",
+            "target_state_or_ut": "Puducherry UT",
+            "target_district": "",
+            "target_city": "",
+            "location_scope_type": "STATE_UT",
+            "valid_cities_in_district": {"puducherry", "pondicherry", "pondy", "karaikal", "mahe", "yanam", "ouzhangarai", "moolakulam", "lawspet", "kalapet"},
+            "raw_input": location_str
+        }
+
+    # Region specific sub-districts of Puducherry UT
+    if "karaikal" in loc_low:
+        return {
+            "target_country": "India",
+            "target_state_or_ut": "Puducherry UT",
+            "target_district": "Karaikal",
+            "target_city": "Karaikal",
+            "location_scope_type": "DISTRICT",
+            "valid_cities_in_district": {"karaikal", "kottucherry", "nedungadu", "neravy", "thirunallar", "t.r.pattinam"},
+            "raw_input": location_str
+        }
+    elif "mahe" in loc_low:
+        return {
+            "target_country": "India",
+            "target_state_or_ut": "Puducherry UT",
+            "target_district": "Mahe",
+            "target_city": "Mahe",
+            "location_scope_type": "DISTRICT",
+            "valid_cities_in_district": {"mahe", "chalakkara", "pandakkal"},
+            "raw_input": location_str
+        }
+    elif "yanam" in loc_low:
+        return {
+            "target_country": "India",
+            "target_state_or_ut": "Puducherry UT",
+            "target_district": "Yanam",
+            "target_city": "Yanam",
+            "location_scope_type": "DISTRICT",
+            "valid_cities_in_district": {"yanam"},
+            "raw_input": location_str
+        }
+    elif any(p in loc_low for p in ["puducherry", "pondicherry", "pondy"]):
         return {
             "target_country": "India",
             "target_state_or_ut": "Puducherry UT",
             "target_district": "Puducherry",
             "target_city": "Puducherry",
-            "valid_cities_in_district": {"puducherry", "pondicherry", "pondy", "karaikal", "mahe", "yanam", "ouzhangarai", "moolakulam", "lawspet", "kalapet"},
+            "location_scope_type": "DISTRICT",
+            "valid_cities_in_district": {"puducherry", "pondicherry", "pondy", "ouzhangarai", "moolakulam", "lawspet", "kalapet"},
             "raw_input": location_str
         }
 
@@ -263,6 +310,7 @@ def normalize_target_location(location_str: str) -> Dict[str, Any]:
                 "target_state_or_ut": data["state"],
                 "target_district": data["district"],
                 "target_city": data["district"],
+                "location_scope_type": "DISTRICT",
                 "valid_cities_in_district": set(data["cities_towns"]),
                 "raw_input": location_str
             }
@@ -276,6 +324,7 @@ def normalize_target_location(location_str: str) -> Dict[str, Any]:
         "target_state_or_ut": "Tamil Nadu",
         "target_district": district_name,
         "target_city": district_name,
+        "location_scope_type": "DISTRICT",
         "valid_cities_in_district": set(tokens),
         "raw_input": location_str
     }

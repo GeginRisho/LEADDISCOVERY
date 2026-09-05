@@ -447,6 +447,63 @@ class ApiClient {
       body: JSON.stringify({ category, max_results_per_region })
     });
   }
+
+  // ADMIN MASTER ORGANIZATIONS API
+  async getAdminOrganizations(params?: {
+    search?: string;
+    category?: string;
+    sub_category?: string;
+    district?: string;
+    state?: string;
+    verification_status?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<{ page: number; page_size: number; total_records: number; total_pages: number; items: any[] }> {
+    const q = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== "") q.append(k, String(v));
+      });
+    }
+    return this.request(`/api/admin/organizations?${q.toString()}`);
+  }
+
+  async getAdminOrganization(id: number): Promise<any> {
+    return this.request(`/api/admin/organizations/${id}`);
+  }
+
+  async createAdminOrganization(data: any): Promise<any> {
+    return this.request("/api/admin/organizations", {
+      method: "POST",
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateAdminOrganization(id: number, data: any): Promise<any> {
+    return this.request(`/api/admin/organizations/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data)
+    });
+  }
+
+  async deleteAdminOrganization(id: number): Promise<any> {
+    return this.request(`/api/admin/organizations/${id}`, {
+      method: "DELETE"
+    });
+  }
+
+  async addAdminBranch(orgId: number, data: any): Promise<any> {
+    return this.request(`/api/admin/organizations/${orgId}/branches`, {
+      method: "POST",
+      body: JSON.stringify(data)
+    });
+  }
+
+  async deleteAdminBranch(branchId: number): Promise<any> {
+    return this.request(`/api/admin/branches/${branchId}`, {
+      method: "DELETE"
+    });
+  }
 }
 
 export const api = new ApiClient();

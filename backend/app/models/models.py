@@ -96,8 +96,10 @@ class Organization(Base):
     district_id = Column(Integer, ForeignKey("districts.id", ondelete="SET NULL"), nullable=True, index=True)
     
     name = Column(String(255), nullable=False)
+    display_name = Column(String(255), nullable=True)
     category = Column(String(255), nullable=True, index=True)
     sub_category = Column(String(255), nullable=True, index=True)
+    description = Column(Text, nullable=True)
     discovery_source_url = Column(Text, nullable=True) # E.g. DuckDuckGo / SARAS directory URL
     
     # Address & Location details
@@ -109,8 +111,22 @@ class Organization(Base):
     pincode = Column(String(50), nullable=True)
     
     official_website_url = Column(Text, nullable=True)
+    google_maps_url = Column(Text, nullable=True)
     
-    # Generic Verification Pipeline Flags
+    # Official Social & Custom Links
+    facebook_url = Column(Text, nullable=True)
+    instagram_url = Column(Text, nullable=True)
+    linkedin_url = Column(Text, nullable=True)
+    youtube_url = Column(Text, nullable=True)
+    x_url = Column(Text, nullable=True)
+    whatsapp_url = Column(Text, nullable=True)
+    other_links = Column(JSON, nullable=True) # List of dicts: [{label, url, link_type}]
+    
+    # Verification Pipeline Flags
+    admin_verified = Column(Boolean, default=False, index=True)
+    verified_by = Column(String(255), nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+    
     identity_verified = Column(Boolean, default=False)
     category_verified = Column(Boolean, default=False)
     country_verified = Column(Boolean, default=False)
@@ -125,7 +141,8 @@ class Organization(Base):
     confidence_score = Column(String(50), default="LOW")
     
     confidence = Column(String(50), default="LOW") # HIGH, MEDIUM, LOW
-    source_type = Column(String(50), default="AUTOMATIC") # AUTOMATIC, MANUAL
+    source_type = Column(String(50), default="SCRAPER_VERIFIED") # SCRAPER_VERIFIED, ADMIN_VERIFIED
+    verification_method = Column(String(100), nullable=True) # ADMIN, SCRAPER_AUTOMATIC
     last_seen_at = Column(DateTime, default=datetime.datetime.utcnow)
     last_crawled_at = Column(DateTime, nullable=True)
     last_verified_at = Column(DateTime, nullable=True)
@@ -139,17 +156,46 @@ class Organization(Base):
     phone_numbers = relationship("PhoneNumber", back_populates="organization", cascade="all, delete-orphan")
     email_addresses = relationship("EmailAddress", back_populates="organization", cascade="all, delete-orphan")
     social_links = relationship("SocialLink", back_populates="organization", cascade="all, delete-orphan")
+    branches = relationship("OrgBranch", back_populates="organization", cascade="all, delete-orphan")
     
     __table_args__ = (
         Index("idx_org_name", "name"),
         Index("idx_org_district", "district"),
         Index("idx_org_category", "category"),
         Index("idx_org_sub_category", "sub_category"),
+        Index("idx_org_admin_verified", "admin_verified"),
         Index("idx_org_cat_sub_dist", "category", "sub_category", "district"),
         Index("idx_org_cat_sub_city", "category", "sub_category", "city"),
         Index("idx_org_cat_sub_state", "category", "sub_category", "state"),
         Index("idx_org_loc_full", "country", "state", "district"),
         Index("idx_org_verified_all", "location_verified", "official_website_verified", "identity_verified", "category_verified"),
+    )
+
+class OrgBranch(Base):
+    __tablename__ = "org_branches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    branch_name = Column(String(255), nullable=False)
+    address = Column(Text, nullable=True)
+    city = Column(String(100), nullable=True, index=True)
+    district = Column(String(100), nullable=True, index=True)
+    state = Column(String(100), nullable=True, index=True)
+    country = Column(String(100), default="India", nullable=False)
+    pincode = Column(String(50), nullable=True)
+    phone_numbers = Column(JSON, nullable=True)
+    email_addresses = Column(JSON, nullable=True)
+    website_url = Column(Text, nullable=True)
+    maps_url = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    organization = relationship("Organization", back_populates="branches")
+
+    __table_args__ = (
+        Index("idx_branch_district", "district"),
+        Index("idx_branch_city", "city"),
+        Index("idx_branch_state", "state"),
     )
 
 class DiscoveryCampaign(Base):
@@ -208,6 +254,7 @@ class TaskLead(Base):
     id = Column(Integer, primary_key=True, index=True)
     task_id = Column(Integer, ForeignKey("scraping_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    branch_id = Column(Integer, ForeignKey("org_branches.id", ondelete="SET NULL"), nullable=True, index=True)
     qualification_status = Column(String(50), default="QUALIFIED") # QUALIFIED, REJECTED
     confidence = Column(String(50), default="LOW")
     identity_verified = Column(Boolean, default=True)
@@ -220,6 +267,7 @@ class TaskLead(Base):
 
     task = relationship("ScrapingTask", back_populates="task_leads")
     organization = relationship("Organization", back_populates="task_leads")
+    branch = relationship("OrgBranch")
 
     __table_args__ = (
         UniqueConstraint("task_id", "organization_id", name="uq_task_org_lead"),
