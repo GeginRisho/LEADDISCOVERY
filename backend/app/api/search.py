@@ -55,6 +55,9 @@ def fast_search_verified_index(
         scraper_verified_clause
     )
 
+    # Quarantine Filter: Exclude quarantined non-organization portal records
+    quarantine_clause = or_(Organization.is_quarantined == False, Organization.is_quarantined.is_(None))
+
     # Main Query with Branches Eager Loading
     query = db.query(Organization).options(
         joinedload(Organization.website),
@@ -64,7 +67,8 @@ def fast_search_verified_index(
         joinedload(Organization.branches)
     ).filter(
         *cat_filter,
-        verification_clause
+        verification_clause,
+        quarantine_clause
     )
 
     # Location Filter: Match HQ OR Branch

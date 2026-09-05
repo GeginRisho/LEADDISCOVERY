@@ -140,6 +140,9 @@ class Organization(Base):
     verification_reason = Column(Text, nullable=True)
     confidence_score = Column(String(50), default="LOW")
     
+    is_quarantined = Column(Boolean, default=False, index=True)
+    quarantine_reason = Column(Text, nullable=True)
+    
     confidence = Column(String(50), default="LOW") # HIGH, MEDIUM, LOW
     source_type = Column(String(50), default="SCRAPER_VERIFIED") # SCRAPER_VERIFIED, ADMIN_VERIFIED
     verification_method = Column(String(100), nullable=True) # ADMIN, SCRAPER_AUTOMATIC

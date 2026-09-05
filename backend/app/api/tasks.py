@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Query
 from fastapi.responses import StreamingResponse, Response
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import io
@@ -109,7 +110,8 @@ def create_task(
         Organization.district_verified == True,
         Organization.location_verified == True,
         Organization.official_website_verified == True,
-        Organization.confidence == "HIGH"
+        Organization.confidence == "HIGH",
+        or_(Organization.is_quarantined == False, Organization.is_quarantined.is_(None))
     )
 
     if norm_subcat and norm_subcat != norm_cat:

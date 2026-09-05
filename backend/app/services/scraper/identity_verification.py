@@ -175,8 +175,196 @@ def verify_organization_identity(
             metadata["rejection_reason"] = REJECTION_ARTICLE
             return False, REJECTION_ARTICLE, metadata
 
+# Patterns indicating a Government Portal or Directory rather than an individual organization entity
+GOVERNMENT_PORTAL_PATTERNS = [
+    r'ourgovernment', r'mygov\b', r'prime minister of india', r'government online directory',
+    r'integrated government', r'government portal', r'national portal of india',
+    r'official portal of', r'government website\b', r'official website of government',
+    r'state government portal', r'ministry of\b', r'department of\b'
+]
+
+def classify_candidate_entity(
+    name: str,
+    url: str = "",
+    snippet: str = "",
+    html_text: str = ""
+) -> Tuple[str, float, Dict[str, Any]]:
+    """
+    Generic Candidate Entity Classifier.
+    Classifies a candidate into:
+    - ORGANIZATION (Physical or legal organization)
+    - GOVERNMENT_PORTAL (Central/State government directory or main portal)
+    - DIRECTORY (Business aggregator or directory portal)
+    - TRAVEL_GUIDE (Tourism page, Wikivoyage)
+    - ENCYCLOPEDIA (Wikipedia, dictionary)
+    - ARTICLE / NEWS / BLOG / FORUM (Informational article or forum post)
+    - BOARD_PAGE (Exam result page, cutoff, admit card)
+    - IRRELEVANT (Foreign/unrelated entity)
+    - UNKNOWN
+    
+    Returns: (entity_type, confidence_score, metadata)
+    """
+    name_low = name.lower().strip()
+    url_low = (url or "").lower().strip()
+    snippet_low = (snippet or "").lower().strip()
+    combined = f"{name_low} {snippet_low} {html_text[:1000].lower()}"
+
+    # 1. Travel Guide
+    for pattern in TRAVEL_GUIDE_TITLE_PATTERNS:
+        if re.search(pattern, combined) or (url_low and re.search(pattern, url_low)):
+            return "CONTENT/TRAVEL_GUIDE", 0.95, {"reason": "Travel guide or tourism article detected"}
+
+    # 2. Encyclopedia
+    for pattern in ENCYCLOPEDIA_TITLE_PATTERNS:
+        if re.search(pattern, name_low) or (url_low and ("wikipedia.org" in url_low or "/wiki/" in url_low)):
+            return "ENCYCLOPEDIA", 0.95, {"reason": "Wikipedia or encyclopedia entry detected"}
+
+    # 3. Government Portal / Central Directory
+    for pattern in GOVERNMENT_PORTAL_PATTERNS:
+        if re.search(pattern, name_low) or (url_low and ("mygov.in" in url_low or "india.gov.in" in url_low or "pmindia.gov.in" in url_low)):
+            return "GOVERNMENT_PORTAL", 0.90, {"reason": "Central/State government directory portal detected"}
+
+    # 4. Exam / Board Result Portal
+    for pattern in EXAM_PORTAL_TITLE_PATTERNS:
+        if re.search(pattern, name_low):
+            return "BOARD_PAGE", 0.90, {"reason": "Exam result, cutoff, or board portal page detected"}
+
+    # 5. Directory / Aggregator / List Page
+    for pattern in LISTING_TITLE_PATTERNS:
+        if re.search(pattern, name_low):
+            return "DIRECTORY", 0.85, {"reason": "Multi-item ranking or listing page title detected"}
+
+    if url_low:
+        parsed = urllib.parse.urlparse(url_low)
+        path = parsed.path
+        for path_pat in CONTENT_PATH_PATTERNS:
+            if re.search(path_pat, path):
+                if not any(k in path for k in ["about", "contact", "location", "branch", "campus", "hospital", "school", "hotel", "college"]):
+                    return "DIRECTORY", 0.80, {"reason": "Directory path pattern detected in URL"}
+
+    # Default to ORGANIZATION if non-organization patterns are clear
+    return "ORGANIZATION", 0.85, {"reason": "Candidate represents a standalone organization entity"}
+
+
+def verify_organization_identity(
+    name: str,
+    url: str = "",
+    snippet: str = "",
+    html_text: str = "",
+    jsonld_data: Optional[List[Dict[str, Any]]] = None
+) -> Tuple[bool, str, Dict[str, Any]]:
+    """
+    Generically verifies whether a candidate represents a REAL PHYSICAL/LEGAL ORGANIZATION
+    versus a Search/Discovery Content page (Travel guide, Wikipedia, Article, Directory, 
+    Exam portal, Board results, Ranking page, Government portal, etc.).
+    
+    Uses MULTI-SIGNAL DEEP INSPECTION:
+    - Candidate name & title formatting
+    - Canonical URL & path structure
+    - Meta description / Snippet content
+    - Schema.org JSON-LD structural types
+    - Breadcrumb taxonomy & page layout clues
+    
+    Returns:
+        (identity_verified: bool, rejection_reason: str, metadata: dict)
+    """
+    metadata = {
+        "entity_type": "UNKNOWN",
+        "identity_verified": False,
+        "category_verified": False,
+        "official_website_verified": False,
+        "rejection_reason": None,
+        "schema_types": [],
+        "signals_evaluated": []
+    }
+
+    if not name or len(name.strip()) < 3:
+        metadata["rejection_reason"] = REJECTION_NOT_AN_ORGANIZATION
+        return False, REJECTION_NOT_AN_ORGANIZATION, metadata
+
+    # Perform Entity Classification
+    entity_type, conf, entity_meta = classify_candidate_entity(name, url, snippet, html_text)
+    metadata["entity_type"] = entity_type
+
+    if entity_type != "ORGANIZATION":
+        rej_code = REJECTION_NOT_AN_ORGANIZATION
+        if entity_type in ("TRAVEL_GUIDE", "CONTENT/TRAVEL_GUIDE"): rej_code = REJECTION_TRAVEL_GUIDE
+        elif entity_type in ("ENCYCLOPEDIA", "CONTENT/ENCYCLOPEDIA"): rej_code = REJECTION_ENCYCLOPEDIA
+        elif entity_type == "GOVERNMENT_PORTAL": rej_code = REJECTION_GOVERNMENT_PORTAL
+        elif entity_type == "BOARD_PAGE": rej_code = REJECTION_EXAM_PORTAL
+        elif entity_type in ("DIRECTORY", "AGGREGATOR"): rej_code = REJECTION_DIRECTORY
+        
+        metadata["rejection_reason"] = rej_code
+        return False, rej_code, metadata
+
+    name_lower = name.lower().strip()
+    url_lower = (url or "").lower().strip()
+    snippet_lower = (snippet or "").lower().strip()
+    combined_text = f"{name_lower} {snippet_lower} {html_text[:1000].lower()}"
+
+    # Extract JSON-LD Schema.org Types if available
+    found_schema_types = set()
+    if jsonld_data:
+        for item in jsonld_data:
+            if isinstance(item, dict):
+                stype = item.get("@type")
+                if isinstance(stype, str):
+                    found_schema_types.add(stype.lower())
+                elif isinstance(stype, list):
+                    found_schema_types.update([s.lower() for s in stype if isinstance(s, str)])
+    
+    metadata["schema_types"] = list(found_schema_types)
+
+    # 1. TRAVEL GUIDE CHECK
+    for pattern in TRAVEL_GUIDE_TITLE_PATTERNS:
+        if re.search(pattern, combined_text) or (url_lower and re.search(pattern, url_lower)):
+            metadata["entity_type"] = "CONTENT/TRAVEL_GUIDE"
+            metadata["rejection_reason"] = REJECTION_TRAVEL_GUIDE
+            return False, REJECTION_TRAVEL_GUIDE, metadata
+
+    # 2. ENCYCLOPEDIA / REFERENCE CHECK
+    for pattern in ENCYCLOPEDIA_TITLE_PATTERNS:
+        if re.search(pattern, name_lower) or (url_lower and ("wikipedia.org" in url_lower or "wiktionary.org" in url_lower or "/wiki/" in url_lower)):
+            metadata["entity_type"] = "CONTENT/ENCYCLOPEDIA"
+            metadata["rejection_reason"] = REJECTION_ENCYCLOPEDIA
+            return False, REJECTION_ENCYCLOPEDIA, metadata
+
+    # 3. EXAM PORTAL / BOARD RESULT / SYLLABUS CHECK
+    for pattern in EXAM_PORTAL_TITLE_PATTERNS:
+        if re.search(pattern, name_lower):
+            metadata["entity_type"] = "CONTENT/EXAM_PORTAL"
+            metadata["rejection_reason"] = REJECTION_EXAM_PORTAL
+            return False, REJECTION_EXAM_PORTAL, metadata
+
+    # 4. MULTI-ITEM DIRECTORY / AGGREGATOR / RANKING LIST CHECK
+    for pattern in LISTING_TITLE_PATTERNS:
+        if re.search(pattern, name_lower):
+            metadata["entity_type"] = "CONTENT/RANKING_OR_DIRECTORY"
+            metadata["rejection_reason"] = REJECTION_RANKING_PAGE
+            return False, REJECTION_RANKING_PAGE, metadata
+
+    # 5. URL PATH PATTERN INSPECTION
+    if url_lower:
+        parsed = urllib.parse.urlparse(url_lower)
+        path = parsed.path
+        for path_pat in CONTENT_PATH_PATTERNS:
+            if re.search(path_pat, path):
+                if not any(org_kw in path for org_kw in ["about", "contact", "location", "branch", "campus"]):
+                    metadata["entity_type"] = "CONTENT/CATEGORY_PATH"
+                    metadata["rejection_reason"] = REJECTION_DIRECTORY
+                    return False, REJECTION_DIRECTORY, metadata
+
+    # 6. SCHEMA.ORG TYPE EVALUATION (IF PRESENT)
+    if found_schema_types:
+        has_org_schema = bool(found_schema_types.intersection(ORGANIZATION_SCHEMA_TYPES))
+        has_content_schema = bool(found_schema_types.intersection(CONTENT_SCHEMA_TYPES))
+        
+        if has_content_schema and not has_org_schema:
+            metadata["entity_type"] = "CONTENT/PAGE_SCHEMA"
+            metadata["rejection_reason"] = REJECTION_ARTICLE
+            return False, REJECTION_ARTICLE, metadata
+
     # 7. SPECIFIC NON-ORGANIZATION TITLE FORMATS
-    # E.g., "Erode - Travel guide at Wikivoyage", "CBSE Result 2024", "Top Schools List"
     if " – travel guide" in name_lower or " - travel guide" in name_lower or " travel guide at " in name_lower:
         metadata["entity_type"] = "CONTENT/TRAVEL_GUIDE"
         metadata["rejection_reason"] = REJECTION_TRAVEL_GUIDE
