@@ -16,7 +16,8 @@ from app.models.models import (
 )
 from app.services.scraper.discovery import (
     DuckDuckGoHTMLProvider, BingHTMLProvider, UserURLProvider, 
-    CbseSarasSeedProvider, PublicDirectoryProvider, DiscoveryError, is_generic_listing_title
+    CbseSarasSeedProvider, PublicDirectoryProvider, MultiSourceDiscoveryManager,
+    DiscoveryError, is_generic_listing_title
 )
 from app.services.scraper.identity_verification import verify_organization_identity
 from app.services.location_service import verify_organization_location, normalize_target_location
@@ -255,20 +256,7 @@ async def run_scraping_task(task_id: int):
 
     try:
         t_disc_start = time.time()
-        log_event(db, task.id, "PROGRESS_UPDATE", "Discovering candidate organizations across bounded providers...")
-
-        if is_url_list(task.location):
-            providers = [("UserURLProvider", UserURLProvider())]
-        else:
-            providers = [
-                ("CbseSarasSeedProvider", CbseSarasSeedProvider()),
-                ("BingHTMLProvider", BingHTMLProvider()),
-                ("DuckDuckGoHTMLProvider", DuckDuckGoHTMLProvider()),
-                ("PublicDirectoryProvider", PublicDirectoryProvider())
-            ]
-
-        task.progress = 10
-        db.commit()
+        log_event(db, task.id, "PROGRESS_UPDATE", "Executing multi-source candidate discovery across parallel providers...")
 
         active_leads: List[Dict[str, Any]] = []
 
@@ -309,118 +297,109 @@ async def run_scraping_task(task_id: int):
                     "state_verified": True,
                     "district_verified": True,
                     "location_verified": True,
-                    "official_website_verified": True,
-                    "confidence": org.confidence
+                    "official_website_verified": org.official_website_verified,
+                    "confidence": org.confidence or "HIGH"
                 })
 
         if active_leads:
             log_event(db, task.id, "FAST_INDEX_LOADED", f"Loaded {len(active_leads)} pre-verified master organizations into active task state.")
 
-        for prov_name, provider in providers:
+        # Multi-Source Discovery Manager Execution
+        discovery_manager = MultiSourceDiscoveryManager()
+        raw_candidates = await discovery_manager.discover_candidates(
+            location=task.location,
+            keyword=task.keyword,
+            max_results=task.max_results,
+            shared_client=shared_client
+        )
+
+        task.discovered_count = len(raw_candidates)
+        task.progress = 25
+        db.commit()
+
+        log_event(
+            db, task.id, "DISCOVERY_COMPLETED",
+            f"[MULTI-SOURCE DISCOVERY] Discovered {len(raw_candidates)} candidate entities across multi-source providers."
+        )
+
+        target_loc_obj = normalize_target_location(task.location)
+
+        for c in raw_candidates:
             if len(active_leads) >= target_min:
                 break
 
-            log_event(db, task.id, "[DISCOVERY START]", f"[DISCOVERY START] provider=\"{prov_name}\" query=\"{task.keyword} in {task.location}\"")
-            prov_start = time.time()
+            name_raw = c["name"]
+            url_raw = c.get("possible_website") or ""
 
-            try:
-                prov_candidates = await provider.discover(
-                    location=task.location,
-                    keyword=task.keyword,
-                    max_results=task.max_results,
-                    client=shared_client
-                )
+            name_low = name_raw.lower().strip()
+            url_low = url_raw.lower().strip()
 
-                for c in prov_candidates:
-                    if len(active_leads) >= target_min:
-                        break
+            if name_low in seen_names or (url_low and url_low in seen_urls):
+                continue
 
-                    name_raw = c["name"]
-                    url_raw = c.get("possible_website") or ""
+            # STAGE 1: IDENTITY VERIFICATION
+            is_real_org, id_reason, id_meta = verify_organization_identity(name_raw, url_raw, c.get("snippet", ""))
+            if not is_real_org:
+                rejection_metrics["not_an_organization"] += 1
+                log_event(db, task.id, "[CANDIDATE REJECT]", f"[CANDIDATE REJECT] candidate=\"{name_raw}\" reason=\"Identity Filter: {id_reason}\"")
+                continue
 
-                    name_low = name_raw.lower().strip()
-                    url_low = url_raw.lower().strip()
+            # STAGE 2: CATEGORY VERIFICATION
+            is_cat_valid, cat_reason = verify_category_match(task.keyword, name_raw, c.get("category", ""), url_raw)
+            if not is_cat_valid:
+                rejection_metrics["category_mismatch"] += 1
+                log_event(db, task.id, "[CANDIDATE REJECT]", f"[CANDIDATE REJECT] candidate=\"{name_raw}\" reason=\"Category Filter: {cat_reason}\"")
+                continue
 
-                    if name_low in seen_names or (url_low and url_low in seen_urls):
-                        continue
+            # STAGE 3: LOCATION VERIFICATION
+            is_loc_valid, loc_reason, loc_meta = verify_organization_location(
+                target_location_str=task.location,
+                org_name=name_raw,
+                detected_address=c.get("address", ""),
+                domain=url_raw
+            )
+            if not is_loc_valid and c.get("discovery_source_type") not in ("OFFICIAL_REGISTRY", "GOVERNMENT_DIRECTORY"):
+                rejection_metrics["location_mismatch"] += 1
+                log_event(db, task.id, "[LOCATION REJECT]", f"[LOCATION REJECT] candidate=\"{name_raw}\" reason=\"Location Filter: {loc_reason}\"")
+                continue
 
-                    # -------------------------------------------------------------
-                    # STAGE 1: REAL ORGANIZATION IDENTITY VERIFICATION
-                    # -------------------------------------------------------------
-                    is_real_org, id_reason, id_meta = verify_organization_identity(name_raw, url_raw, c.get("snippet", ""))
-                    if not is_real_org:
-                        rejection_metrics["not_an_organization"] += 1
-                        log_event(db, task.id, "[CANDIDATE REJECT]", f"[CANDIDATE REJECT] candidate=\"{name_raw}\" reason=\"Identity Filter: {id_reason}\"")
-                        continue
+            seen_names.add(name_low)
+            if url_low:
+                seen_urls.add(url_low)
 
-                    # -------------------------------------------------------------
-                    # STAGE 2: CATEGORY VERIFICATION
-                    # -------------------------------------------------------------
-                    is_cat_valid, cat_reason = verify_category_match(task.keyword, name_raw, c.get("category", ""), url_raw)
-                    if not is_cat_valid:
-                        rejection_metrics["category_mismatch"] += 1
-                        log_event(db, task.id, "[CANDIDATE REJECT]", f"[CANDIDATE REJECT] candidate=\"{name_raw}\" reason=\"Category Filter: {cat_reason}\"")
-                        continue
+            candidates.append(c)
 
-                    # -------------------------------------------------------------
-                    # STAGE 3: LOCATION VERIFICATION (Country, State/UT, District)
-                    # -------------------------------------------------------------
-                    is_loc_valid, loc_reason, loc_meta = verify_organization_location(
-                        target_location_str=task.location,
-                        org_name=name_raw,
-                        detected_address=c.get("address", ""),
-                        domain=url_raw
+            # STAGE 4: OFFICIAL WEBSITE RESOLUTION & CRAWL (OPTIONAL ENHANCEMENT - DO NOT DISCARD CANDIDATE IF UNRESOLVED)
+            official_url = None
+            domain = None
+            res_err = None
+            has_web_verified = False
+
+            if url_raw and not is_directory_domain(url_raw):
+                official_url = url_raw
+                domain = extract_domain(url_raw)
+
+            if not official_url or not domain or is_directory_domain(domain):
+                async with RESOLUTION_SEMAPHORE:
+                    official_url, domain, res_err = await resolve_official_website(
+                        name_raw, task.location, url_raw, shared_client
                     )
-                    if not is_loc_valid and prov_name != "CbseSarasSeedProvider":
-                        rejection_metrics["location_mismatch"] += 1
-                        log_event(db, task.id, "[LOCATION REJECT]", f"[LOCATION REJECT] candidate=\"{name_raw}\" reason=\"Location Filter: {loc_reason}\"")
-                        continue
 
-                    seen_names.add(name_low)
-                    if url_low:
-                        seen_urls.add(url_low)
+            crawl_res = None
+            website_status = "ACTIVE"
+            website_reason = None
+            emails_list = []
+            phones_list = []
+            socials_list = []
+            people_list = []
+            address_str, city_str, state_str, pin_str = "", "", "", ""
 
-                    candidates.append(c)
-                    task.discovered_count = len(candidates)
-                    db.commit()
-
-                    # -------------------------------------------------------------
-                    # STAGE 4: OFFICIAL WEBSITE DISCOVERY & OWNERSHIP
-                    # -------------------------------------------------------------
-                    official_url = None
-                    domain = None
-                    res_err = None
-
-                    async with RESOLUTION_SEMAPHORE:
-                        official_url, domain, res_err = await resolve_official_website(
-                            name_raw, task.location, url_raw, shared_client
-                        )
-
-                    if not official_url or not domain or is_directory_domain(domain):
-                        rejection_metrics["directory_url"] += 1
-                        log_event(
-                            db, task.id, "[CANDIDATE REJECT]",
-                            f"[CANDIDATE REJECT] candidate=\"{name_raw}\" reason=\"Official website unresolved or belongs to directory ({res_err or 'Unresolved domain'})\""
-                        )
-                        continue
-
-                    has_dns = await check_dns_resolution(domain, timeout=4.0)
-                    if not has_dns:
-                        rejection_metrics["dns_failed"] += 1
-                        log_event(db, task.id, "[CANDIDATE REJECT]", f"[CANDIDATE REJECT] candidate=\"{name_raw}\" domain=\"{domain}\" reason=\"DNS resolution failed\"")
-                        continue
-
-                    # -------------------------------------------------------------
-                    # STAGE 5: CRAWL VERIFIED OFFICIAL WEBSITE
-                    # -------------------------------------------------------------
-                    crawl_res = None
-                    website_status = "ACTIVE"
-                    website_reason = None
-
+            if official_url and domain and not is_directory_domain(domain):
+                has_dns = await check_dns_resolution(domain, timeout=4.0)
+                if has_dns:
                     if domain in domain_crawl_cache:
                         crawl_res = domain_crawl_cache[domain]
                         website_status = crawl_res.get("status", "ACTIVE")
-                        website_reason = crawl_res.get("reason")
                     else:
                         async with CRAWL_SEMAPHORE:
                             crawler = DomainCrawler(
@@ -432,109 +411,91 @@ async def run_scraping_task(task_id: int):
                             c_start = time.time()
                             try:
                                 crawl_res = await crawler.crawl()
-                                c_dur = time.time() - c_start
-                                total_http_time += c_dur
+                                total_http_time += (time.time() - c_start)
                                 domain_crawl_cache[domain] = crawl_res
                                 website_status = crawl_res.get("status", "ACTIVE")
-                                website_reason = crawl_res.get("reason")
                             except Exception as crawl_err:
                                 website_status = "FAILED"
                                 website_reason = str(crawl_err)
 
-                    if website_status not in ("SUCCESS", "ACTIVE") or not crawl_res:
-                        rejection_metrics["unreachable"] += 1
-                        log_event(db, task.id, "[CANDIDATE REJECT]", f"[CANDIDATE REJECT] candidate=\"{name_raw}\" reason=\"Official website unreachable or crawl failed ({website_reason or 'Crawl failed'})\":")
-                        continue
+                    if website_status in ("SUCCESS", "ACTIVE") and crawl_res:
+                        emails_list = crawl_res.get("emails") or []
+                        phones_list = crawl_res.get("phones") or []
+                        socials_list = crawl_res.get("socials") or []
+                        people_list = crawl_res.get("people") or []
 
-                    # -------------------------------------------------------------
-                    # STAGE 6: OFFICIAL WEBSITE LOCATION VERIFICATION
-                    # -------------------------------------------------------------
-                    address_str, city_str, state_str, pin_str = "", "", "", ""
-                    emails_list = crawl_res["emails"] if crawl_res else []
-                    phones_list = crawl_res["phones"] if crawl_res else []
-                    socials_list = crawl_res["socials"] if crawl_res else []
-                    people_list = crawl_res["people"] if crawl_res else []
+                        if crawl_res.get("addresses"):
+                            addr = crawl_res["addresses"][0]
+                            address_str = addr.get("address") or ""
+                            city_str = addr.get("city") or ""
+                            state_str = addr.get("state") or ""
+                            pin_str = addr.get("pincode") or ""
 
-                    if crawl_res and crawl_res.get("addresses"):
-                        addr = crawl_res["addresses"][0]
-                        address_str = addr.get("address") or ""
-                        city_str = addr.get("city") or ""
-                        state_str = addr.get("state") or ""
-                        pin_str = addr.get("pincode") or ""
+                        html_evidence = (crawl_res.get("page_title") or "") + " " + " ".join(crawl_res.get("headings") or [])
+                        is_web_loc_valid, _, _ = verify_organization_location(
+                            target_location_str=task.location,
+                            org_name=name_raw,
+                            detected_address=address_str,
+                            html_text=html_evidence,
+                            domain=domain or ""
+                        )
+                        if is_web_loc_valid:
+                            has_web_verified = True
 
-                    html_evidence = (crawl_res.get("page_title") or "") + " " + " ".join(crawl_res.get("headings") or [])
-                    is_web_loc_valid, web_loc_reason, _ = verify_organization_location(
-                        target_location_str=task.location,
-                        org_name=name_raw,
-                        detected_address=address_str,
-                        html_text=html_evidence,
-                        domain=domain or ""
-                    )
+            # Contacts fallback from discovery metadata if crawl was empty or unperformed
+            if not phones_list and c.get("phone"):
+                phones_list = [{"raw_value": c["phone"], "normalized_value": c["phone"], "type": "main"}]
+            if not emails_list and c.get("email"):
+                emails_list = [{"email": c["email"], "extraction_method": "discovery_source"}]
 
-                    if not is_web_loc_valid:
-                        rejection_metrics["location_mismatch"] += 1
-                        log_event(db, task.id, "[LOCATION REJECT]", f"[LOCATION REJECT] candidate=\"{name_raw}\" website address mismatch reason=\"{web_loc_reason}\"")
-                        continue
+            lead_res = {
+                "name": name_raw,
+                "category": task.keyword,
+                "address": address_str or c.get("address", ""),
+                "city": city_str or target_loc_obj["target_city"],
+                "state": state_str or target_loc_obj["target_state_or_ut"],
+                "country": target_loc_obj["target_country"],
+                "pincode": pin_str or c.get("pincode", ""),
+                "domain": domain if has_web_verified else None,
+                "official_website_url": official_url if has_web_verified else None,
+                "possible_website": official_url or url_raw,
+                "website_status": website_status if has_web_verified else "UNVERIFIED",
+                "website_reason": website_reason,
+                "source_url": c.get("source_url") or url_raw,
+                "discovery_source": c.get("discovery_source", "SEARCH_PROVIDER"),
+                "discovery_source_type": c.get("discovery_source_type", "SCRAPER_VERIFIED"),
+                "emails": emails_list,
+                "phones": phones_list,
+                "socials": socials_list,
+                "people": people_list,
+                "identity_verified": True,
+                "category_verified": True,
+                "country_verified": True,
+                "state_verified": True,
+                "district_verified": True,
+                "location_verified": True,
+                "official_website_verified": has_web_verified,
+                "confidence": "HIGH" if has_web_verified else "MEDIUM"
+            }
 
-                    # Seed contacts fallback if available
-                    if c.get("pincode") and not pin_str: pin_str = c["pincode"]
+            is_dup = False
+            for existing in active_leads:
+                score = calculate_match_score(lead_res, existing)
+                if score >= 0.8:
+                    is_dup = True
+                    task.duplicate_count += 1
+                    rejection_metrics["duplicates"] += 1
+                    existing.update(merge_organizations(existing, lead_res))
+                    break
 
-                    # -------------------------------------------------------------
-                    # STAGE 7: QUALITY SCORE & DEDUPLICATION
-                    # -------------------------------------------------------------
-                    target_loc_obj = normalize_target_location(task.location)
+            if not is_dup:
+                active_leads.append(lead_res)
+                badge_type = "WEB VERIFIED" if has_web_verified else "DISCOVERY VERIFIED"
+                log_event(db, task.id, "[LEAD VERIFIED]", f"[LEAD VERIFIED] ({len(active_leads)}/{target_min}) org=\"{name_raw}\" badge=\"{badge_type}\"")
 
-                    lead_res = {
-                        "name": name_raw,
-                        "category": task.keyword,
-                        "address": address_str,
-                        "city": city_str or target_loc_obj["target_city"],
-                        "state": state_str or target_loc_obj["target_state_or_ut"],
-                        "country": target_loc_obj["target_country"],
-                        "pincode": pin_str,
-                        "domain": domain,
-                        "official_website_url": official_url,
-                        "possible_website": official_url,
-                        "website_status": website_status,
-                        "website_reason": website_reason,
-                        "source_url": c.get("source_url") or url_raw,
-                        "discovery_source": c.get("discovery_source", "SEARCH_PROVIDER"),
-                        "emails": emails_list,
-                        "phones": phones_list,
-                        "socials": socials_list,
-                        "people": people_list,
-                        "identity_verified": True,
-                        "category_verified": True,
-                        "country_verified": True,
-                        "state_verified": True,
-                        "district_verified": True,
-                        "location_verified": True,
-                        "official_website_verified": True,
-                        "confidence": "HIGH"
-                    }
-
-                    lead_res["confidence"] = calculate_lead_confidence(lead_res)
-
-                    is_dup = False
-                    for existing in active_leads:
-                        score = calculate_match_score(lead_res, existing)
-                        if score >= 0.8:
-                            is_dup = True
-                            task.duplicate_count += 1
-                            rejection_metrics["duplicates"] += 1
-                            existing.update(merge_organizations(existing, lead_res))
-                            break
-
-                    if not is_dup:
-                        active_leads.append(lead_res)
-                        log_event(db, task.id, "[LEAD VERIFIED]", f"[LEAD VERIFIED] ({len(active_leads)}/{target_min}) org=\"{name_raw}\" domain=\"{domain}\"")
-
-                    prog = min(10 + int((len(active_leads) / target_min) * 75), 85)
-                    task.progress = prog
-                    db.commit()
-
-            except Exception as pe:
-                log_event(db, task.id, "PROVIDER_BLOCKED", f"[PROVIDER] {prov_name} error/blocked: {pe}")
+            prog = min(25 + int((len(active_leads) / target_min) * 60), 85)
+            task.progress = prog
+            db.commit()
 
         t_disc_end = time.time()
         disc_ms = int((t_disc_end - t_disc_start) * 1000)
@@ -592,14 +553,15 @@ async def run_scraping_task(task_id: int):
                 existing_org.category = cat_norm
                 existing_org.sub_category = subcat_norm
                 existing_org.updated_at = datetime.datetime.utcnow()
-                existing_org.official_website_url = lead["official_website_url"]
+                if lead["official_website_url"]:
+                    existing_org.official_website_url = lead["official_website_url"]
                 existing_org.identity_verified = True
                 existing_org.category_verified = True
                 existing_org.country_verified = True
                 existing_org.state_verified = True
                 existing_org.district_verified = True
                 existing_org.location_verified = True
-                existing_org.official_website_verified = True
+                existing_org.official_website_verified = lead.get("official_website_verified", False)
                 existing_org.confidence = lead["confidence"]
                 org = existing_org
             else:
@@ -624,7 +586,7 @@ async def run_scraping_task(task_id: int):
                     state_verified=True,
                     district_verified=True,
                     location_verified=True,
-                    official_website_verified=True,
+                    official_website_verified=lead.get("official_website_verified", False),
                     confidence=lead["confidence"]
                 )
                 db.add(org)
@@ -644,7 +606,7 @@ async def run_scraping_task(task_id: int):
                         identity_verified=True,
                         category_verified=True,
                         location_verified=True,
-                        official_website_verified=True
+                        official_website_verified=lead.get("official_website_verified", False)
                     )
                     db.add(tl)
                 seen_task_lead_org_ids.add(org.id)

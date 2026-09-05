@@ -221,7 +221,13 @@ def is_candidate_relevant(name: str, keyword: str, location: str, url: str = "")
         return False, f"CATEGORY REJECT: {cat_reason}"
 
     # Stage 3: Location Verification
-    loc_valid, loc_reason, _ = verify_organization_location(location, name, "", "", url)
+    loc_valid, loc_reason, _ = verify_organization_location(
+        target_location_str=location,
+        org_name=name,
+        detected_address=location,
+        html_text=f"{name} {location}",
+        domain=url
+    )
     if not loc_valid:
         return False, f"LOCATION REJECT: {loc_reason}"
 
