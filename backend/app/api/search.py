@@ -45,15 +45,18 @@ def fast_search_verified_index(
             func.lower(Organization.category) == norm_subcat.lower()
         ))
 
-    # Verification Filter: (Admin Verified) OR (7-Flag Scraper Verified)
-    scraper_verified_clause = and_(
-        Organization.identity_verified == True,
-        Organization.category_verified == True,
-        Organization.country_verified == True,
-        Organization.state_verified == True,
-        Organization.district_verified == True,
-        Organization.location_verified == True,
-        Organization.official_website_verified == True
+    # Verification Filter: (Admin Verified) OR (7-Flag Scraper Verified / SCRAPER_VERIFIED source_type)
+    scraper_verified_clause = or_(
+        Organization.source_type == "SCRAPER_VERIFIED",
+        and_(
+            Organization.identity_verified == True,
+            Organization.category_verified == True,
+            Organization.country_verified == True,
+            Organization.state_verified == True,
+            Organization.district_verified == True,
+            Organization.location_verified == True,
+            Organization.official_website_verified == True
+        )
     )
     verification_clause = or_(
         Organization.admin_verified == True,

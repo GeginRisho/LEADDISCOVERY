@@ -114,13 +114,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     router.push("/login");
   };
 
-  const navLinks = [
+  const baseNavLinks = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/scrape", label: "New Scrape Task", icon: Search },
     { href: "/history", label: "Task History", icon: History },
-    { href: "/organizations", label: "Master Organizations", icon: Building2 },
-    { href: "/settings", label: "Settings", icon: Settings }
   ];
+
+  const adminOrgLink = { href: "/organizations", label: "Master Organizations", icon: Building2 };
+  const settingsLink = { href: "/settings", label: "Settings", icon: Settings };
+
+  const navLinks = user?.role === "ADMIN"
+    ? [...baseNavLinks, adminOrgLink, settingsLink]
+    : [...baseNavLinks, settingsLink];
 
   const adminNavLinks = [
     { href: "/admin", label: "Admin Dashboard", icon: ShieldCheck },

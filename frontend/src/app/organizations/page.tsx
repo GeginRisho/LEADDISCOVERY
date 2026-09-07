@@ -7,11 +7,15 @@ import {
   CheckCircle, Trash2, Edit3, ShieldAlert, Layers, ExternalLink, X, Map,
   Link as LinkIcon, GitBranch, AlertTriangle
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/AppLayout";
 
 export default function MasterOrganizationsPage() {
+  const router = useRouter();
   const { showToast } = useToast();
+
+  const [accessDenied, setAccessDenied] = useState(false);
 
   const [stats, setStats] = useState<{
     total_organizations: number;
@@ -104,12 +108,22 @@ export default function MasterOrganizationsPage() {
 
   const [form, setForm] = useState(initialFormState);
 
+  const checkAccessError = (err: any) => {
+    if (err?.status === 403 || err?.message?.includes("403") || err?.message?.includes("Admin privileges required")) {
+      setAccessDenied(true);
+      return true;
+    }
+    return false;
+  };
+
   const fetchStats = async () => {
     try {
       const s = await api.getOrganizationSummaryStats();
       setStats(s);
-    } catch (err) {
-      console.error("Failed to load organization stats", err);
+    } catch (err: any) {
+      if (!checkAccessError(err)) {
+        console.error("Failed to load organization stats", err);
+      }
     }
   };
 
@@ -117,8 +131,10 @@ export default function MasterOrganizationsPage() {
     try {
       const dists = await api.getDistrictStats();
       setDistrictsList(dists.map(d => d.district_name));
-    } catch (err) {
-      console.error("Failed to load district list", err);
+    } catch (err: any) {
+      if (!checkAccessError(err)) {
+        console.error("Failed to load district list", err);
+      }
     }
   };
 
@@ -140,7 +156,9 @@ export default function MasterOrganizationsPage() {
       setTotal(res.total);
       setPages(res.pages);
     } catch (err: any) {
-      showToast(err.message || "Failed to load master organizations.", "error");
+      if (!checkAccessError(err)) {
+        showToast(err.message || "Failed to load master organizations.", "error");
+      }
     } finally {
       setLoading(false);
     }
@@ -379,6 +397,30 @@ export default function MasterOrganizationsPage() {
       branches: prev.branches.filter((_, i) => i !== idx)
     }));
   };
+
+  if (accessDenied) {
+    return (
+      <div className="max-w-xl mx-auto my-12 p-8 bg-white rounded-3xl border border-red-200 shadow-xl text-center space-y-6 animate-in fade-in-20">
+        <div className="h-16 w-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto border border-red-100">
+          <ShieldAlert className="h-8 w-8" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-black text-gray-900 tracking-tight">Access Denied: Admin Privileges Required</h2>
+          <p className="text-sm text-gray-600 font-medium leading-relaxed">
+            Master Organizations is a restricted administrative database interface. Your account does not have authorization to view or manage these records.
+          </p>
+        </div>
+        <div className="pt-2">
+          <button
+            onClick={() => router.push("/")}
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3.5 px-6 rounded-xl transition-all shadow-md shadow-orange-500/20"
+          >
+            Return to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">

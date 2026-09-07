@@ -5,14 +5,17 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_
 from app.core.database import get_db
 from app.models.models import (
-    Organization, Website, PhoneNumber, EmailAddress, SocialLink, District
+    Organization, Website, PhoneNumber, EmailAddress, SocialLink, District, User
 )
-from app.api.auth import get_current_user
+from app.api.auth import get_current_user, get_current_admin_user
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
 @router.get("/stats")
-def get_organization_stats(db: Session = Depends(get_db)):
+def get_organization_stats(
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(get_current_admin_user)
+):
     today_start = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
     total_orgs = db.query(func.count(Organization.id)).scalar() or 0
@@ -102,7 +105,8 @@ def list_organizations(
     search: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(get_current_admin_user)
 ):
     query = db.query(Organization)
 
@@ -250,7 +254,10 @@ def list_organizations(
     }
 
 @router.get("/matrix")
-def get_campaign_matrix(db: Session = Depends(get_db)):
+def get_campaign_matrix(
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(get_current_admin_user)
+):
     from app.core.tn_districts import ALL_REGIONS
     
     counts_query = db.query(
@@ -305,7 +312,7 @@ def get_campaign_matrix(db: Session = Depends(get_db)):
 def create_organization_manual(
     payload: dict,
     db: Session = Depends(get_db),
-    admin_user = Depends(get_current_user)
+    admin_user: User = Depends(get_current_admin_user)
 ):
     name = (payload.get("name") or "").strip()
     category = (payload.get("category") or "").strip()
@@ -416,7 +423,7 @@ def update_organization(
     org_id: int,
     payload: dict,
     db: Session = Depends(get_db),
-    admin_user = Depends(get_current_user)
+    admin_user: User = Depends(get_current_admin_user)
 ):
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
@@ -443,7 +450,7 @@ def update_organization(
 def delete_organization(
     org_id: int,
     db: Session = Depends(get_db),
-    admin_user = Depends(get_current_user)
+    admin_user: User = Depends(get_current_admin_user)
 ):
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
@@ -457,11 +464,8 @@ def delete_organization(
 def verify_organization(
     org_id: int,
     db: Session = Depends(get_db),
-    admin_user = Depends(get_current_user)
+    admin_user: User = Depends(get_current_admin_user)
 ):
-    if admin_user.role != "ADMIN":
-        raise HTTPException(status_code=403, detail="Admin privileges required.")
-
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found.")
@@ -490,11 +494,8 @@ def verify_organization(
 def unverify_organization(
     org_id: int,
     db: Session = Depends(get_db),
-    admin_user = Depends(get_current_user)
+    admin_user: User = Depends(get_current_admin_user)
 ):
-    if admin_user.role != "ADMIN":
-        raise HTTPException(status_code=403, detail="Admin privileges required.")
-
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found.")
