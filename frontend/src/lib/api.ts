@@ -319,7 +319,10 @@ class ApiClient {
     district?: string;
     category?: string;
     city?: string;
+    state?: string;
+    country?: string;
     confidence?: string;
+    verification_status?: string;
     search?: string;
     page?: number;
     limit?: number;
@@ -334,7 +337,10 @@ class ApiClient {
     if (params?.district) qp.append("district", params.district);
     if (params?.category) qp.append("category", params.category);
     if (params?.city) qp.append("city", params.city);
+    if (params?.state) qp.append("state", params.state);
+    if (params?.country) qp.append("country", params.country);
     if (params?.confidence) qp.append("confidence", params.confidence);
+    if (params?.verification_status) qp.append("verification_status", params.verification_status);
     if (params?.search) qp.append("search", params.search);
     if (params?.page) qp.append("page", params.page.toString());
     if (params?.limit) qp.append("limit", params.limit.toString());
@@ -372,6 +378,8 @@ class ApiClient {
       body: JSON.stringify(data)
     });
   }
+
+
 
   async updateOrganization(id: number, data: any): Promise<{ message: string }> {
     return this.request(`/api/organizations/${id}`, {

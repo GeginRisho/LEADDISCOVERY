@@ -95,6 +95,7 @@ def list_organizations(
     state: Optional[str] = Query(None),
     country: Optional[str] = Query(None),
     confidence: Optional[str] = Query(None),
+    verification_status: Optional[str] = Query(None),
     website_verified: Optional[bool] = Query(None),
     phone_available: Optional[bool] = Query(None),
     email_available: Optional[bool] = Query(None),
@@ -111,14 +112,28 @@ def list_organizations(
     if category and category.upper() != "ALL":
         query = query.filter(func.lower(Organization.category).like(f"%{category.strip().lower()}%"))
 
-    if city and city.strip():
+    if city and city.strip() and city.upper() != "ALL":
         query = query.filter(func.lower(Organization.city).like(f"%{city.strip().lower()}%"))
 
     if state and state.strip() and state.upper() != "ALL":
         query = query.filter(func.lower(Organization.state).like(f"%{state.strip().lower()}%"))
 
+    if country and country.strip() and country.upper() != "ALL":
+        query = query.filter(func.lower(Organization.country) == country.strip().lower())
+
     if confidence and confidence.upper() != "ALL":
         query = query.filter(Organization.confidence == confidence.upper())
+
+    if verification_status and verification_status.upper() != "ALL":
+        v = verification_status.upper()
+        if v == "ADMIN_VERIFIED":
+            query = query.filter(Organization.admin_verified == True)
+        elif v == "SCRAPER_VERIFIED":
+            query = query.filter(Organization.admin_verified == False, Organization.source_type == "SCRAPER_VERIFIED")
+        elif v == "UNVERIFIED":
+            query = query.filter(Organization.admin_verified == False)
+        elif v == "QUARANTINED":
+            query = query.filter(Organization.is_quarantined == True)
 
     if website_verified is True:
         query = query.join(Website).filter(Website.status == "ACTIVE", Website.url.isnot(None))
@@ -166,22 +181,62 @@ def list_organizations(
         emails = [{"email": e.email, "extraction_method": e.extraction_method} for e in o.email_addresses]
         socials = [{"platform": s.platform, "url": s.url} for s in o.social_links]
 
+        branches_data = []
+        if o.branches:
+            for b in o.branches:
+                branches_data.append({
+                    "id": b.id,
+                    "branch_name": b.branch_name,
+                    "country": b.country,
+                    "state": b.state,
+                    "district": b.district,
+                    "city": b.city,
+                    "address": b.address,
+                    "pincode": b.pincode,
+                    "phone_numbers": b.phone_numbers,
+                    "email_addresses": b.email_addresses,
+                    "website_url": b.website_url,
+                    "maps_url": b.maps_url
+                })
+
         items.append({
             "id": o.id,
             "name": o.name,
+            "display_name": o.display_name,
             "category": o.category,
+            "sub_category": o.sub_category,
+            "description": o.description,
             "address": o.address,
             "city": o.city,
             "district": o.district,
             "state": o.state,
+            "country": o.country,
             "pincode": o.pincode,
             "confidence": o.confidence,
+            "admin_verified": o.admin_verified,
+            "verified_by": o.verified_by,
+            "verified_at": o.verified_at.isoformat() if o.verified_at else None,
+            "verification_method": o.verification_method,
+            "source_type": o.source_type,
+            "previous_source_type": o.previous_source_type,
+            "is_quarantined": o.is_quarantined,
+            "quarantine_reason": o.quarantine_reason,
+            "official_website_url": o.official_website_url,
+            "google_maps_url": o.google_maps_url,
+            "facebook_url": o.facebook_url,
+            "instagram_url": o.instagram_url,
+            "linkedin_url": o.linkedin_url,
+            "youtube_url": o.youtube_url,
+            "x_url": o.x_url,
+            "whatsapp_url": o.whatsapp_url,
+            "other_links": o.other_links or [],
             "created_at": o.created_at.isoformat() if o.created_at else None,
             "updated_at": o.updated_at.isoformat() if o.updated_at else None,
             "website": web_info,
             "phones": phones,
             "emails": emails,
-            "socials": socials
+            "socials": socials,
+            "branches": branches_data
         })
 
     pages = (total + limit - 1) // limit if limit > 0 else 1

@@ -463,6 +463,12 @@ def admin_create_organization(
         db.refresh(system_task)
 
     web_url = (payload.get("official_website_url") or payload.get("website") or "").strip()
+    if web_url:
+        from urllib.parse import urlparse
+        parsed = urlparse(web_url)
+        hostname = (parsed.hostname or "").lower()
+        if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1") or hostname.startswith("192.168.") or hostname.startswith("10.") or hostname.startswith("172.16."):
+            raise HTTPException(status_code=400, detail="Invalid website URL: SSRF protection blocked access to internal/private network addresses.")
 
     org = Organization(
         task_id=system_task.id,
@@ -492,7 +498,9 @@ def admin_create_organization(
         verification_method="ADMIN",
         verified_by=admin_user.email,
         verified_at=datetime.datetime.utcnow(),
-        confidence="HIGH"
+        confidence="HIGH",
+        is_quarantined=bool(payload.get("is_quarantined", False)),
+        quarantine_reason=payload.get("quarantine_reason") or None
     )
     db.add(org)
     db.commit()

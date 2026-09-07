@@ -96,6 +96,8 @@ def migrate_schema(eng):
         "ALTER TABLE organizations ADD COLUMN verified_at TIMESTAMP NULL",
         "ALTER TABLE organizations ADD COLUMN verification_method VARCHAR(100) NULL",
         "ALTER TABLE organizations ADD COLUMN previous_source_type VARCHAR(50) NULL",
+        "ALTER TABLE organizations ADD COLUMN is_quarantined BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE organizations ADD COLUMN quarantine_reason TEXT NULL",
         "ALTER TABLE task_leads ADD COLUMN branch_id INTEGER NULL",
         "CREATE INDEX IF NOT EXISTS idx_org_admin_verified ON organizations(admin_verified)",
         "CREATE TABLE IF NOT EXISTS org_branches (id SERIAL PRIMARY KEY, organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, branch_name VARCHAR(255) NOT NULL, address TEXT, city VARCHAR(100), district VARCHAR(100), state VARCHAR(100), country VARCHAR(100) DEFAULT 'India', pincode VARCHAR(50), phone_numbers JSON, email_addresses JSON, website_url TEXT, maps_url TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",

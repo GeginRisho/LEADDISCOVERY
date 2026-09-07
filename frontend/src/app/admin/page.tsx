@@ -92,8 +92,8 @@ export default function AdminDashboardPage() {
           <Link href="/admin/users" className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 shadow-xs">
             Manage Users
           </Link>
-          <Link href="/admin/health" className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-orange-500 text-white hover:bg-orange-600 shadow-sm">
-            System Health
+          <Link href="/admin/organizations" className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-orange-500 text-white hover:bg-orange-600 shadow-sm">
+            Master Organizations
           </Link>
         </div>
       </div>
