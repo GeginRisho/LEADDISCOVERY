@@ -145,6 +145,7 @@ class Organization(Base):
     
     confidence = Column(String(50), default="LOW") # HIGH, MEDIUM, LOW
     source_type = Column(String(50), default="SCRAPER_VERIFIED") # SCRAPER_VERIFIED, ADMIN_VERIFIED
+    previous_source_type = Column(String(50), nullable=True) # Preserves original provenance when un-verifying
     verification_method = Column(String(100), nullable=True) # ADMIN, SCRAPER_AUTOMATIC
     last_seen_at = Column(DateTime, default=datetime.datetime.utcnow)
     last_crawled_at = Column(DateTime, nullable=True)
@@ -176,6 +177,7 @@ class Organization(Base):
         Index("idx_org_fast_cat_subcat_dist", "category", "sub_category", "district", "admin_verified", "official_website_verified"),
         Index("idx_org_fast_cat_state", "category", "state", "admin_verified", "official_website_verified"),
         Index("idx_org_fast_cat_city", "category", "city", "admin_verified", "official_website_verified"),
+        Index("idx_org_priority_rank", "category", "district", "admin_verified", "confidence"),
     )
 
 class OrgBranch(Base):

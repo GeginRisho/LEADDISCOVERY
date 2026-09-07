@@ -249,7 +249,7 @@ export default function TaskDetailsPage() {
         </div>
       </div>
 
-      {/* FAST RESULTS + BACKGROUND DISCOVERY STATUS BANNER */}
+      {/* CLEAN SIMPLE STATE BANNERS */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
           <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0" />
@@ -265,9 +265,45 @@ export default function TaskDetailsPage() {
           <div className="bg-orange-50/90 border border-orange-200 rounded-xl p-4 flex items-center gap-3 animate-pulse">
             <Loader2 className="h-5 w-5 text-orange-600 animate-spin shrink-0" />
             <div>
-              <div className="text-xs font-bold text-orange-900 uppercase tracking-wide">Background Discovery</div>
-              <div className="text-sm font-black text-orange-800">
-                Searching for additional verified organizations...
+              <div className="text-xs font-bold text-orange-900 uppercase tracking-wide">Discovery Status</div>
+              <div className="text-sm font-bold text-orange-800">
+                Discovery is running in the background. Verified organizations will appear here automatically.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {(isCompleted || isBelowMinimum) && !isRunning && (
+          <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
+            <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0" />
+            <div>
+              <div className="text-xs font-bold text-emerald-900 uppercase tracking-wide">Discovery Status</div>
+              <div className="text-sm font-bold text-emerald-800">
+                Discovery completed.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isFailed && (
+          <div className="bg-red-50/90 border border-red-200 rounded-xl p-4 flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-600 shrink-0" />
+            <div>
+              <div className="text-xs font-bold text-red-900 uppercase tracking-wide">Discovery Status</div>
+              <div className="text-sm font-bold text-red-800">
+                Discovery could not be completed.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {task.status === "CANCELLED" && (
+          <div className="bg-gray-100 border border-gray-300 rounded-xl p-4 flex items-center gap-3">
+            <Ban className="h-5 w-5 text-gray-600 shrink-0" />
+            <div>
+              <div className="text-xs font-bold text-gray-700 uppercase tracking-wide">Discovery Status</div>
+              <div className="text-sm font-bold text-gray-800">
+                Discovery cancelled.
               </div>
             </div>
           </div>
@@ -284,9 +320,6 @@ export default function TaskDetailsPage() {
             </h3>
             <p className="text-xs text-amber-800 font-medium">
               {task.error_info || `Discovery budget was exhausted. Found ${leads.length} verified organizations matching location and quality filters.`}
-            </p>
-            <p className="text-[11px] text-amber-700">
-              Data Accuracy Priority: Missing organizations were NOT fabricated. Review the Live Monitor Logs for candidate filtering details.
             </p>
           </div>
         </div>
@@ -306,20 +339,6 @@ export default function TaskDetailsPage() {
           </div>
         </div>
       )}
-
-      {/* LIVE PROGRESS STATUS ROW */}
-      <div className="space-y-2">
-        <div className="flex justify-between items-center text-xs font-bold text-gray-700 px-1">
-          <span>Overall Task Progress</span>
-          <span className="text-orange-600 font-extrabold">{task.progress}%</span>
-        </div>
-        <div className="h-3 w-full bg-orange-50 rounded-full overflow-hidden border border-orange-200">
-          <div 
-            className={`h-full transition-all duration-500 ${isFailed ? "bg-red-500" : isZeroResults ? "bg-amber-500" : isBelowMinimum ? "bg-amber-500" : "bg-orange-500"}`}
-            style={{ width: `${task.progress}%` }}
-          ></div>
-        </div>
-      </div>
 
       {/* MAIN CONTENT AREA: LEADS DATA TABLE */}
       <div className="space-y-4">

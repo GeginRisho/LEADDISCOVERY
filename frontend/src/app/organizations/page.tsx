@@ -154,10 +154,21 @@ export default function MasterOrganizationsPage() {
     try {
       const res = await api.verifyOrganization(id);
       showToast(res.message, "success");
-      fetchStats();
       fetchOrgs();
+      fetchStats();
     } catch (err: any) {
       showToast(err.message || "Failed to verify organization.", "error");
+    }
+  };
+
+  const handleUnverifyOrg = async (id: number) => {
+    try {
+      const res = await api.unverifyOrganization(id);
+      showToast(res.message, "info");
+      fetchOrgs();
+      fetchStats();
+    } catch (err: any) {
+      showToast(err.message || "Failed to unverify organization.", "error");
     }
   };
 
@@ -363,7 +374,7 @@ export default function MasterOrganizationsPage() {
                   <th className="py-3.5 px-4">Website</th>
                   <th className="py-3.5 px-4">Phones</th>
                   <th className="py-3.5 px-4">Emails</th>
-                  <th className="py-3.5 px-4">Confidence</th>
+                  <th className="py-3.5 px-4">Verification</th>
                   <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -410,11 +421,12 @@ export default function MasterOrganizationsPage() {
                     </td>
                     <td className="py-3.5 px-4">
                       <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded border ${
+                        org.admin_verified ? "bg-blue-50 border-blue-200 text-blue-700" :
                         org.confidence === "HIGH" ? "bg-emerald-50 border-emerald-200 text-emerald-700" :
                         org.confidence === "MEDIUM" ? "bg-blue-50 border-blue-200 text-blue-700" :
                         "bg-amber-50 border-amber-200 text-amber-700"
                       }`}>
-                        {org.confidence}
+                        {org.admin_verified ? "ADMIN VERIFIED" : `${org.confidence} CONFIDENCE`}
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-right flex items-center justify-end gap-2">
@@ -424,7 +436,14 @@ export default function MasterOrganizationsPage() {
                       >
                         View
                       </button>
-                      {org.confidence !== "HIGH" && (
+                      {org.admin_verified ? (
+                        <button
+                          onClick={() => handleUnverifyOrg(org.id)}
+                          className="text-amber-600 hover:text-amber-700 font-bold text-[11px]"
+                        >
+                          Unverify
+                        </button>
+                      ) : (
                         <button
                           onClick={() => handleVerifyOrg(org.id)}
                           className="text-emerald-600 hover:text-emerald-700 font-bold text-[11px]"

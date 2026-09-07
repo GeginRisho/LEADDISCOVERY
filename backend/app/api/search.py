@@ -3,7 +3,7 @@ import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func
 from app.core.database import get_db
 from app.models.models import Organization, OrgBranch, Website, PhoneNumber, EmailAddress, SocialLink
 from app.services.location_service import normalize_target_location
@@ -34,12 +34,18 @@ def fast_search_verified_index(
 
     database_query_started = time.time()
 
-    # Base Filter: Category & Subcategory matching
-    cat_filter = [Organization.category == norm_cat]
-    if norm_subcat and norm_subcat != norm_cat:
-        cat_filter.append(Organization.sub_category == norm_subcat)
+    # Base Filter: Category & Subcategory matching (Case Insensitive)
+    cat_filter = [or_(
+        func.lower(Organization.category) == norm_cat.lower(),
+        func.lower(Organization.category) == category.lower()
+    )]
+    if norm_subcat and norm_subcat.lower() != norm_cat.lower():
+        cat_filter.append(or_(
+            func.lower(Organization.sub_category) == norm_subcat.lower(),
+            func.lower(Organization.category) == norm_subcat.lower()
+        ))
 
-    # Verification Filter: (Admin Verified) OR (7-Flag Scraper Verified with HIGH confidence)
+    # Verification Filter: (Admin Verified) OR (7-Flag Scraper Verified)
     scraper_verified_clause = and_(
         Organization.identity_verified == True,
         Organization.category_verified == True,
@@ -47,8 +53,7 @@ def fast_search_verified_index(
         Organization.state_verified == True,
         Organization.district_verified == True,
         Organization.location_verified == True,
-        Organization.official_website_verified == True,
-        Organization.confidence == "HIGH"
+        Organization.official_website_verified == True
     )
     verification_clause = or_(
         Organization.admin_verified == True,
@@ -58,7 +63,7 @@ def fast_search_verified_index(
     # Quarantine Filter: Exclude quarantined non-organization portal records
     quarantine_clause = or_(Organization.is_quarantined == False, Organization.is_quarantined.is_(None))
 
-    # Main Query with Branches Eager Loading
+    # Main Query with Eager Loading & Priority Ordering
     query = db.query(Organization).options(
         joinedload(Organization.website),
         joinedload(Organization.phone_numbers),
@@ -84,7 +89,13 @@ def fast_search_verified_index(
         branch_loc_match = Organization.branches.any(OrgBranch.state == target_state)
         query = query.filter(or_(hq_loc_match, branch_loc_match))
 
-    organizations = query.limit(limit * 2).all()
+    # Explicit SQL Ordering: Admin Verified FIRST, then confidence, freshness, id
+    organizations = query.order_by(
+        Organization.admin_verified.desc(),
+        Organization.confidence.desc(),
+        Organization.updated_at.desc(),
+        Organization.id.asc()
+    ).limit(limit * 2).all()
 
     database_query_finished = time.time()
     db_execution_ms = round((database_query_finished - database_query_started) * 1000, 2)

@@ -26,7 +26,9 @@ def get_auth_token():
         "role": "ADMIN"
     })
     if reg_resp.status_code == 201:
-        return reg_resp.json()["access_token"]
+        login_resp = client.post("/api/auth/login", json={"email": "testrealpipeline@example.com", "password": "testpassword123"})
+        if login_resp.status_code == 200:
+            return login_resp.json()["access_token"]
     
     login_resp = client.post("/api/auth/login", json={"email": "testrealpipeline@example.com", "password": "testpassword123"})
     return login_resp.json()["access_token"]

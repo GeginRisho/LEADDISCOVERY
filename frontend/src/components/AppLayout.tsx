@@ -49,6 +49,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }, 4000);
   }, []);
 
+  const [isServerConnecting, setIsServerConnecting] = useState(false);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -67,33 +69,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      // Optimistic authentication when token is present: render shell immediately!
+      if (isMounted) {
+        setAuthStatus("authenticated");
+      }
+
       try {
+        setIsServerConnecting(true);
         const userData = await api.getMe();
         if (isMounted) {
           setUser(userData);
-          setAuthStatus("authenticated");
+          setIsServerConnecting(false);
           if (isAuthRoute) {
             router.push("/");
           }
         }
       } catch (err: any) {
         if (isMounted) {
+          setIsServerConnecting(false);
           const stillHasToken = typeof window !== "undefined" && !!localStorage.getItem("token");
           if (!stillHasToken) {
             setUser(null);
             setAuthStatus("unauthenticated");
             if (!isAuthRoute) {
               router.push("/login");
-            }
-          } else {
-            // Non-401 error (e.g. server down). Don't redirect to login if authenticated.
-            if (user) {
-              setAuthStatus("authenticated");
-            } else {
-              setAuthStatus("unauthenticated");
-              if (!isAuthRoute) {
-                router.push("/login");
-              }
             }
           }
         }
@@ -133,19 +132,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   ];
 
   const isAuthPage = pathname === "/login" || pathname === "/register";
-
-  // Prevent flicker during session initialization
-  if (authStatus === "loading") {
-    return (
-      <div className="min-h-screen bg-[#FFFDF9] flex items-center justify-center flex-col gap-4 text-gray-800">
-        <div className="relative flex items-center justify-center">
-          <div className="h-14 w-14 rounded-full border-4 border-orange-100 border-t-orange-500 animate-spin"></div>
-          <Sparkles className="h-6 w-6 text-orange-500 absolute" />
-        </div>
-        <p className="text-sm font-semibold tracking-wide text-gray-600 animate-pulse">Initializing LeadDiscovery...</p>
-      </div>
-    );
-  }
 
   if (isAuthPage) {
     return (
@@ -358,6 +344,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             
             <div className="flex items-center gap-4">
+              {isServerConnecting && (
+                <div className="flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 animate-pulse">
+                  <Loader2 className="h-3.5 w-3.5 text-amber-500 animate-spin" />
+                  Connecting to server...
+                </div>
+              )}
               <div className="hidden md:flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full bg-orange-50 border border-orange-200 text-orange-700">
                 <CheckCircle className="h-3.5 w-3.5 text-orange-500" />
                 SSRF Protection Active

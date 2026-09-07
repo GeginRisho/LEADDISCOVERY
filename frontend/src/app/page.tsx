@@ -36,24 +36,10 @@ export default function DashboardPage() {
 
   const recentTasks = tasks.slice(0, 5);
 
-  if (loading) {
-    return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-8 w-48 bg-gray-200 rounded-lg"></div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-32 bg-gray-200 rounded-2xl"></div>
-          ))}
-        </div>
-        <div className="h-[400px] bg-gray-200 rounded-2xl"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-8">
       
-      {/* Welcome Banner */}
+      {/* Welcome Banner - Renders Immediately */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white border border-gray-200 rounded-2xl p-6 md:p-8 shadow-sm">
         <div>
           <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
@@ -79,7 +65,11 @@ export default function DashboardPage() {
         <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-between shadow-sm">
           <div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Tasks Run</p>
-            <h3 className="text-3xl font-black text-gray-900 mt-2">{totalTasks}</h3>
+            {loading ? (
+              <div className="h-8 w-16 bg-gray-200 animate-pulse rounded mt-2"></div>
+            ) : (
+              <h3 className="text-3xl font-black text-gray-900 mt-2">{totalTasks}</h3>
+            )}
             <p className="text-[10px] text-orange-600 mt-1 flex items-center gap-1 font-semibold">
               <TrendingUp className="h-3 w-3" /> Historical sessions
             </p>
@@ -92,7 +82,11 @@ export default function DashboardPage() {
         <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-between shadow-sm">
           <div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Websites Identified</p>
-            <h3 className="text-3xl font-black text-gray-900 mt-2">{totalWebsitesFound}</h3>
+            {loading ? (
+              <div className="h-8 w-16 bg-gray-200 animate-pulse rounded mt-2"></div>
+            ) : (
+              <h3 className="text-3xl font-black text-gray-900 mt-2">{totalWebsitesFound}</h3>
+            )}
             <p className="text-[10px] text-emerald-600 mt-1 flex items-center gap-1 font-semibold">
               <TrendingUp className="h-3 w-3" /> Official domains
             </p>
@@ -105,7 +99,11 @@ export default function DashboardPage() {
         <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-between shadow-sm">
           <div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Domains Crawled</p>
-            <h3 className="text-3xl font-black text-gray-900 mt-2">{totalCrawled}</h3>
+            {loading ? (
+              <div className="h-8 w-16 bg-gray-200 animate-pulse rounded mt-2"></div>
+            ) : (
+              <h3 className="text-3xl font-black text-gray-900 mt-2">{totalCrawled}</h3>
+            )}
             <p className="text-[10px] text-blue-600 mt-1 flex items-center gap-1 font-semibold">
               <TrendingUp className="h-3 w-3" /> Deep contact crawls
             </p>
@@ -118,7 +116,11 @@ export default function DashboardPage() {
         <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-between shadow-sm">
           <div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Crawls Blocked/Failed</p>
-            <h3 className="text-3xl font-black text-gray-900 mt-2">{totalFailed}</h3>
+            {loading ? (
+              <div className="h-8 w-16 bg-gray-200 animate-pulse rounded mt-2"></div>
+            ) : (
+              <h3 className="text-3xl font-black text-gray-900 mt-2">{totalFailed}</h3>
+            )}
             <p className="text-[10px] text-red-600 mt-1 flex items-center gap-1 font-semibold">
               Robots/Connection limits
             </p>
@@ -142,7 +144,13 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        {totalTasks === 0 ? (
+        {loading ? (
+          <div className="space-y-3">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-20 bg-gray-100 animate-pulse rounded-xl"></div>
+            ))}
+          </div>
+        ) : totalTasks === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="h-16 w-16 rounded-full bg-orange-50 border border-orange-100 flex items-center justify-center mb-4">
               <ListCollapse className="h-8 w-8 text-orange-500" />

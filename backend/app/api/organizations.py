@@ -34,33 +34,55 @@ def get_organization_stats(db: Session = Depends(get_db)):
 @router.get("/districts")
 def get_district_breakdown(db: Session = Depends(get_db)):
     districts = db.query(District).order_by(District.district_name.asc()).all()
+    
+    counts_query = db.query(
+        func.lower(Organization.district).label("district"),
+        func.lower(Organization.category).label("category"),
+        func.count(Organization.id).label("count")
+    ).group_by(
+        func.lower(Organization.district),
+        func.lower(Organization.category)
+    ).all()
+    
+    counts_map = {}
+    for d_name, cat, count in counts_query:
+        if not d_name:
+            continue
+        if d_name not in counts_map:
+            counts_map[d_name] = {"total": 0, "colleges": 0, "hotels": 0, "hospitals": 0, "companies": 0, "it_companies": 0, "schools": 0}
+        
+        counts_map[d_name]["total"] += count
+        cat_lower = (cat or "").lower()
+        if "college" in cat_lower or "university" in cat_lower:
+            counts_map[d_name]["colleges"] += count
+        if "hotel" in cat_lower or "resort" in cat_lower:
+            counts_map[d_name]["hotels"] += count
+        if "hospital" in cat_lower or "clinic" in cat_lower:
+            counts_map[d_name]["hospitals"] += count
+        if "company" in cat_lower:
+            counts_map[d_name]["companies"] += count
+        if "it" in cat_lower or "software" in cat_lower or "tech" in cat_lower:
+            counts_map[d_name]["it_companies"] += count
+        if "school" in cat_lower:
+            counts_map[d_name]["schools"] += count
+
     result = []
-
     for dist in districts:
-        d_name = dist.district_name
-        d_filter = func.lower(Organization.district) == d_name.lower()
-
-        total_orgs = db.query(func.count(Organization.id)).filter(d_filter).scalar() or 0
-        colleges = db.query(func.count(Organization.id)).filter(d_filter, func.lower(Organization.category).like("%college%")).scalar() or 0
-        hotels = db.query(func.count(Organization.id)).filter(d_filter, func.lower(Organization.category).like("%hotel%")).scalar() or 0
-        hospitals = db.query(func.count(Organization.id)).filter(d_filter, func.lower(Organization.category).like("%hospital%")).scalar() or 0
-        companies = db.query(func.count(Organization.id)).filter(d_filter, func.lower(Organization.category).like("%company%")).scalar() or 0
-        it_companies = db.query(func.count(Organization.id)).filter(d_filter, or_(func.lower(Organization.category).like("%it%"), func.lower(Organization.category).like("%software%"))).scalar() or 0
-        schools = db.query(func.count(Organization.id)).filter(d_filter, func.lower(Organization.category).like("%school%")).scalar() or 0
-
+        d_key = dist.district_name.lower()
+        d_counts = counts_map.get(d_key, {"total": 0, "colleges": 0, "hotels": 0, "hospitals": 0, "companies": 0, "it_companies": 0, "schools": 0})
         result.append({
             "district_id": dist.id,
             "district_name": dist.district_name,
             "state": dist.state,
             "country": dist.country,
             "official_district_url": dist.official_district_url,
-            "total_organizations": total_orgs,
-            "colleges_count": colleges,
-            "hotels_count": hotels,
-            "hospitals_count": hospitals,
-            "companies_count": companies,
-            "it_companies_count": it_companies,
-            "schools_count": schools
+            "total_organizations": d_counts["total"],
+            "colleges_count": d_counts["colleges"],
+            "hotels_count": d_counts["hotels"],
+            "hospitals_count": d_counts["hospitals"],
+            "companies_count": d_counts["companies"],
+            "it_companies_count": d_counts["it_companies"],
+            "schools_count": d_counts["schools"]
         })
 
     return result
@@ -175,29 +197,51 @@ def list_organizations(
 @router.get("/matrix")
 def get_campaign_matrix(db: Session = Depends(get_db)):
     from app.core.tn_districts import ALL_REGIONS
-    matrix = []
+    
+    counts_query = db.query(
+        func.lower(Organization.district).label("district"),
+        func.lower(Organization.category).label("category"),
+        func.count(Organization.id).label("count")
+    ).group_by(
+        func.lower(Organization.district),
+        func.lower(Organization.category)
+    ).all()
 
+    counts_map = {}
+    for d_name, cat, count in counts_query:
+        if not d_name:
+            continue
+        if d_name not in counts_map:
+            counts_map[d_name] = {"total": 0, "colleges": 0, "schools": 0, "hotels": 0, "hospitals": 0, "companies": 0, "it_companies": 0}
+        
+        counts_map[d_name]["total"] += count
+        cat_lower = (cat or "").lower()
+        if "college" in cat_lower or "university" in cat_lower:
+            counts_map[d_name]["colleges"] += count
+        if "school" in cat_lower:
+            counts_map[d_name]["schools"] += count
+        if "hotel" in cat_lower or "resort" in cat_lower:
+            counts_map[d_name]["hotels"] += count
+        if "hospital" in cat_lower or "clinic" in cat_lower:
+            counts_map[d_name]["hospitals"] += count
+        if "company" in cat_lower:
+            counts_map[d_name]["companies"] += count
+        if "it" in cat_lower or "software" in cat_lower or "tech" in cat_lower:
+            counts_map[d_name]["it_companies"] += count
+
+    matrix = []
     for reg in ALL_REGIONS:
         r_name = reg["name"]
-        d_filter = func.lower(Organization.district) == r_name.lower()
-
-        total = db.query(func.count(Organization.id)).filter(d_filter).scalar() or 0
-        colleges = db.query(func.count(Organization.id)).filter(d_filter, or_(func.lower(Organization.category).like("%college%"), func.lower(Organization.category).like("%university%"))).scalar() or 0
-        schools = db.query(func.count(Organization.id)).filter(d_filter, func.lower(Organization.category).like("%school%")).scalar() or 0
-        hotels = db.query(func.count(Organization.id)).filter(d_filter, or_(func.lower(Organization.category).like("%hotel%"), func.lower(Organization.category).like("%resort%"))).scalar() or 0
-        hospitals = db.query(func.count(Organization.id)).filter(d_filter, or_(func.lower(Organization.category).like("%hospital%"), func.lower(Organization.category).like("%clinic%"))).scalar() or 0
-        companies = db.query(func.count(Organization.id)).filter(d_filter, func.lower(Organization.category).like("%company%")).scalar() or 0
-        it_companies = db.query(func.count(Organization.id)).filter(d_filter, or_(func.lower(Organization.category).like("%it%"), func.lower(Organization.category).like("%software%"), func.lower(Organization.category).like("%tech%"))).scalar() or 0
-
+        r_counts = counts_map.get(r_name.lower(), {"total": 0, "colleges": 0, "schools": 0, "hotels": 0, "hospitals": 0, "companies": 0, "it_companies": 0})
         matrix.append({
             "region": r_name,
-            "colleges": colleges,
-            "schools": schools,
-            "hotels": hotels,
-            "hospitals": hospitals,
-            "companies": companies,
-            "it_companies": it_companies,
-            "total": total
+            "colleges": r_counts["colleges"],
+            "schools": r_counts["schools"],
+            "hotels": r_counts["hotels"],
+            "hospitals": r_counts["hospitals"],
+            "companies": r_counts["companies"],
+            "it_companies": r_counts["it_companies"],
+            "total": r_counts["total"]
         })
 
     return matrix
@@ -360,12 +404,58 @@ def verify_organization(
     db: Session = Depends(get_db),
     admin_user = Depends(get_current_user)
 ):
+    if admin_user.role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Admin privileges required.")
+
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found.")
 
-    org.confidence = "HIGH"
-    org.last_verified_at = datetime.datetime.utcnow()
-    db.commit()
-    return {"message": f"Organization '{org.name}' verified successfully."}
+    if not org.admin_verified:
+        org.previous_source_type = org.source_type or "SCRAPER_VERIFIED"
+        org.admin_verified = True
+        org.source_type = "ADMIN_VERIFIED"
+        org.verification_method = "ADMIN"
+        org.verified_by = admin_user.email
+        org.verified_at = datetime.datetime.utcnow()
+        org.confidence = "HIGH"
+        org.last_verified_at = datetime.datetime.utcnow()
+        org.updated_at = datetime.datetime.utcnow()
+        db.commit()
+
+    return {
+        "message": f"Organization '{org.name}' verified successfully.",
+        "id": org.id,
+        "admin_verified": True,
+        "source_type": org.source_type,
+        "verified_by": org.verified_by
+    }
+
+@router.post("/{org_id}/unverify")
+def unverify_organization(
+    org_id: int,
+    db: Session = Depends(get_db),
+    admin_user = Depends(get_current_user)
+):
+    if admin_user.role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Admin privileges required.")
+
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+
+    if org.admin_verified:
+        org.admin_verified = False
+        org.source_type = org.previous_source_type or ("MANUAL" if org.verification_method == "ADMIN" else "SCRAPER_VERIFIED")
+        org.verified_by = None
+        org.verified_at = None
+        org.updated_at = datetime.datetime.utcnow()
+        db.commit()
+
+    return {
+        "message": f"Organization '{org.name}' unverified successfully.",
+        "id": org.id,
+        "admin_verified": False,
+        "source_type": org.source_type
+    }
 

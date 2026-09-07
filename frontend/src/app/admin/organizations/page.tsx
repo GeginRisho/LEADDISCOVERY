@@ -66,6 +66,26 @@ export default function AdminOrganizationsPage() {
     }
   };
 
+  const handleVerify = async (id: number, name: string) => {
+    try {
+      const res = await api.verifyAdminOrganization(id);
+      showToast(res.message, "success");
+      fetchOrganizations();
+    } catch (err: any) {
+      showToast(err.message || "Failed to verify organization.", "error");
+    }
+  };
+
+  const handleUnverify = async (id: number, name: string) => {
+    try {
+      const res = await api.unverifyAdminOrganization(id);
+      showToast(res.message, "info");
+      fetchOrganizations();
+    } catch (err: any) {
+      showToast(err.message || "Failed to unverify organization.", "error");
+    }
+  };
+
   const handleCreateNew = () => {
     setEditingOrgId(null);
     setModalOpen(true);
@@ -247,7 +267,24 @@ export default function AdminOrganizationsPage() {
                     </td>
 
                     <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {org.admin_verified ? (
+                          <button
+                            onClick={() => handleUnverify(org.id, org.name)}
+                            className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg transition-colors font-bold text-[10px]"
+                            title="Unverify Organization"
+                          >
+                            Unverify
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleVerify(org.id, org.name)}
+                            className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg transition-colors font-bold text-[10px]"
+                            title="Verify Organization"
+                          >
+                            Verify
+                          </button>
+                        )}
                         <Link
                           href={`/admin/organizations/${org.id}`}
                           className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"

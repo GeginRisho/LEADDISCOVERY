@@ -625,6 +625,8 @@ def admin_update_organization(
     if "x_url" in payload: org.x_url = payload["x_url"]
     if "whatsapp_url" in payload: org.whatsapp_url = payload["whatsapp_url"]
     if "other_links" in payload: org.other_links = payload["other_links"]
+    if "is_quarantined" in payload: org.is_quarantined = bool(payload["is_quarantined"])
+    if "quarantine_reason" in payload: org.quarantine_reason = payload["quarantine_reason"]
 
     # Explicitly set Admin Verified
     org.admin_verified = True
@@ -762,3 +764,57 @@ def admin_delete_branch(
     db.delete(branch)
     db.commit()
     return {"message": f"Branch '{b_name}' (ID: {branch_id}) deleted successfully."}
+
+@router.post("/organizations/{org_id}/verify")
+def admin_verify_organization(
+    org_id: int,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(get_current_admin_user)
+):
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail=f"Organization ID {org_id} not found.")
+
+    if not org.admin_verified:
+        org.previous_source_type = org.source_type or "SCRAPER_VERIFIED"
+        org.admin_verified = True
+        org.source_type = "ADMIN_VERIFIED"
+        org.verification_method = "ADMIN"
+        org.verified_by = admin_user.email
+        org.verified_at = datetime.datetime.utcnow()
+        org.confidence = "HIGH"
+        org.last_verified_at = datetime.datetime.utcnow()
+        org.updated_at = datetime.datetime.utcnow()
+        db.commit()
+
+    return {
+        "message": f"Organization '{org.name}' verified successfully by Admin.",
+        "id": org.id,
+        "admin_verified": True,
+        "source_type": org.source_type
+    }
+
+@router.post("/organizations/{org_id}/unverify")
+def admin_unverify_organization(
+    org_id: int,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(get_current_admin_user)
+):
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail=f"Organization ID {org_id} not found.")
+
+    if org.admin_verified:
+        org.admin_verified = False
+        org.source_type = org.previous_source_type or ("MANUAL" if org.verification_method == "ADMIN" else "SCRAPER_VERIFIED")
+        org.verified_by = None
+        org.verified_at = None
+        org.updated_at = datetime.datetime.utcnow()
+        db.commit()
+
+    return {
+        "message": f"Organization '{org.name}' unverified successfully by Admin.",
+        "id": org.id,
+        "admin_verified": False,
+        "source_type": org.source_type
+    }

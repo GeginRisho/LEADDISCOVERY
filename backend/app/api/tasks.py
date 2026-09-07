@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Query
 from fastapi.responses import StreamingResponse, Response
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import io
@@ -101,16 +101,19 @@ def create_task(
     target_loc = normalize_target_location(payload.location)
     target_min = min(15, payload.max_results) if payload.max_results >= 15 else payload.max_results
 
-    query = db.query(Organization).filter(
-        Organization.category == norm_cat,
+    scraper_verified_clause = and_(
         Organization.identity_verified == True,
         Organization.category_verified == True,
         Organization.country_verified == True,
         Organization.state_verified == True,
         Organization.district_verified == True,
         Organization.location_verified == True,
-        Organization.official_website_verified == True,
-        Organization.confidence == "HIGH",
+        Organization.official_website_verified == True
+    )
+
+    query = db.query(Organization).filter(
+        Organization.category == norm_cat,
+        or_(Organization.admin_verified == True, scraper_verified_clause),
         or_(Organization.is_quarantined == False, Organization.is_quarantined.is_(None))
     )
 
@@ -122,7 +125,12 @@ def create_task(
     if target_loc["target_state_or_ut"]:
         query = query.filter(Organization.state == target_loc["target_state_or_ut"])
 
-    pre_verified_orgs = query.limit(target_min).all()
+    pre_verified_orgs = query.order_by(
+        Organization.admin_verified.desc(),
+        Organization.confidence.desc(),
+        Organization.updated_at.desc(),
+        Organization.id.asc()
+    ).limit(target_min).all()
 
     # Create immediate TaskLead links
     for org in pre_verified_orgs:
@@ -168,19 +176,20 @@ def create_task(
 
 @router.get("", response_model=List[ScrapingTaskResponse])
 def list_tasks(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
+    offset = (page - 1) * limit
     if current_user and current_user.role == "ADMIN":
-        tasks = db.query(ScrapingTask).order_by(ScrapingTask.created_at.desc()).all()
+        query = db.query(ScrapingTask).order_by(ScrapingTask.created_at.desc())
     elif current_user:
-        tasks = db.query(ScrapingTask).filter(ScrapingTask.user_id == current_user.id).order_by(ScrapingTask.created_at.desc()).all()
+        query = db.query(ScrapingTask).filter(ScrapingTask.user_id == current_user.id).order_by(ScrapingTask.created_at.desc())
     else:
-        tasks = []
+        return []
 
-    for t in tasks:
-        if t.status in ("COMPLETED", "COMPLETED_BELOW_MINIMUM", "FAILED", "COMPLETED_WITH_NO_RESULTS"):
-            sync_task_counters(db, t.id)
+    tasks = query.offset(offset).limit(limit).all()
     return tasks
 
 @router.get("/{task_id}", response_model=ScrapingTaskResponse)
@@ -248,6 +257,11 @@ def get_task_leads(
                 joinedload(Organization.phone_numbers),
                 joinedload(Organization.email_addresses),
                 joinedload(Organization.social_links)
+            ).order_by(
+                Organization.admin_verified.desc(),
+                Organization.confidence.desc(),
+                Organization.updated_at.desc(),
+                Organization.id.asc()
             ).all()
     else:
         leads = db.query(Organization).filter(Organization.task_id == task.id)\
@@ -256,6 +270,11 @@ def get_task_leads(
                 joinedload(Organization.phone_numbers),
                 joinedload(Organization.email_addresses),
                 joinedload(Organization.social_links)
+            ).order_by(
+                Organization.admin_verified.desc(),
+                Organization.confidence.desc(),
+                Organization.updated_at.desc(),
+                Organization.id.asc()
             ).all()
         
     qualified_leads = [lead for lead in leads if is_lead_qualified(lead, task.required_fields)]

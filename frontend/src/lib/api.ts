@@ -217,8 +217,8 @@ class ApiClient {
     });
   }
 
-  async getTasks(): Promise<ScrapingTask[]> {
-    return this.request("/api/tasks");
+  async getTasks(page: number = 1, limit: number = 50): Promise<ScrapingTask[]> {
+    return this.request(`/api/tasks?page=${page}&limit=${limit}`);
   }
 
   async getTask(id: string): Promise<ScrapingTask> {
@@ -392,6 +392,12 @@ class ApiClient {
     });
   }
 
+  async unverifyOrganization(id: number): Promise<{ message: string }> {
+    return this.request(`/api/organizations/${id}/unverify`, {
+      method: "POST"
+    });
+  }
+
   // DISCOVERY CAMPAIGNS API
   async getCampaigns(): Promise<any[]> {
     return this.request("/api/campaigns");
@@ -506,6 +512,18 @@ class ApiClient {
   async deleteAdminBranch(branchId: number): Promise<any> {
     return this.request(`/api/admin/branches/${branchId}`, {
       method: "DELETE"
+    });
+  }
+
+  async verifyAdminOrganization(id: number): Promise<any> {
+    return this.request(`/api/admin/organizations/${id}/verify`, {
+      method: "POST"
+    });
+  }
+
+  async unverifyAdminOrganization(id: number): Promise<any> {
+    return this.request(`/api/admin/organizations/${id}/unverify`, {
+      method: "POST"
     });
   }
 }
