@@ -17,7 +17,7 @@ export default function TaskDetailsPage() {
   const taskId = params.id as string;
 
   const [task, setTask] = useState<ScrapingTask | null>(() => api.getCachedTask(taskId));
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [leads, setLeads] = useState<Lead[]>(() => api.getCachedTaskLeads(taskId) || []);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
 
@@ -36,6 +36,10 @@ export default function TaskDetailsPage() {
     const cachedTask = api.getCachedTask(taskId);
     if (cachedTask && isMounted) {
       setTask(cachedTask);
+    }
+    const cachedLeads = api.getCachedTaskLeads(taskId);
+    if (cachedLeads && isMounted && cachedLeads.length > 0) {
+      setLeads(cachedLeads);
     }
 
     async function fetchInitialData() {

@@ -384,16 +384,25 @@ def create_organization_manual(
 
     # Attach Website with explicit verification status
     if website_url:
-        web = Website(
-            organization_id=org.id,
-            domain=domain or website_url,
-            url=website_url,
-            status="ACTIVE" if is_web_verified else "UNVERIFIED",
-            reason="Verified manual entry" if is_web_verified else "Domain on directory/blacklisted portal",
-            discovery_source="MANUAL_ENTRY",
-            confidence=org.confidence
-        )
-        db.add(web)
+        existing_web = db.query(Website).filter(Website.organization_id == org.id).first()
+        if existing_web:
+            existing_web.domain = domain or website_url
+            existing_web.url = website_url
+            existing_web.status = "ACTIVE" if is_web_verified else "UNVERIFIED"
+            existing_web.reason = "Verified manual entry" if is_web_verified else "Domain on directory/blacklisted portal"
+            existing_web.discovery_source = "MANUAL_ENTRY"
+            existing_web.confidence = org.confidence
+        else:
+            web = Website(
+                organization_id=org.id,
+                domain=domain or website_url,
+                url=website_url,
+                status="ACTIVE" if is_web_verified else "UNVERIFIED",
+                reason="Verified manual entry" if is_web_verified else "Domain on directory/blacklisted portal",
+                discovery_source="MANUAL_ENTRY",
+                confidence=org.confidence
+            )
+            db.add(web)
 
     # Attach Phone
     if phone_val:

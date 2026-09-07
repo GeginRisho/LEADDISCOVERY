@@ -111,40 +111,54 @@ def create_task(
         Organization.official_website_verified == True
     )
 
+    from sqlalchemy import func
+    cat_match = or_(
+        func.lower(Organization.category) == norm_cat.lower(),
+        func.lower(Organization.category) == payload.keyword.lower()
+    )
+
     query = db.query(Organization).filter(
-        Organization.category == norm_cat,
+        cat_match,
         or_(Organization.admin_verified == True, scraper_verified_clause),
         or_(Organization.is_quarantined == False, Organization.is_quarantined.is_(None))
     )
 
-    if norm_subcat and norm_subcat != norm_cat:
-        query = query.filter(Organization.sub_category == norm_subcat)
-
     if target_loc["target_district"]:
-        query = query.filter(Organization.district == target_loc["target_district"])
-    if target_loc["target_state_or_ut"]:
-        query = query.filter(Organization.state == target_loc["target_state_or_ut"])
+        query = query.filter(func.lower(Organization.district) == target_loc["target_district"].lower())
+    elif target_loc["target_state_or_ut"]:
+        query = query.filter(func.lower(Organization.state) == target_loc["target_state_or_ut"].lower())
 
-    pre_verified_orgs = query.order_by(
+    from sqlalchemy.orm import joinedload
+    pre_verified_orgs = query.options(
+        joinedload(Organization.website),
+        joinedload(Organization.phone_numbers),
+        joinedload(Organization.email_addresses),
+        joinedload(Organization.social_links)
+    ).order_by(
         Organization.admin_verified.desc(),
         Organization.confidence.desc(),
         Organization.updated_at.desc(),
         Organization.id.asc()
     ).limit(target_min).all()
 
-    # Create immediate TaskLead links
+    # Create immediate TaskLead links safely
+    existing_lead_org_ids = {tl.organization_id for tl in db.query(TaskLead.organization_id).filter(TaskLead.task_id == task.id).all()}
+    added_org_ids = set()
+
     for org in pre_verified_orgs:
-        tl = TaskLead(
-            task_id=task.id,
-            organization_id=org.id,
-            qualification_status="QUALIFIED",
-            confidence=org.confidence,
-            identity_verified=True,
-            category_verified=True,
-            location_verified=True,
-            official_website_verified=True
-        )
-        db.add(tl)
+        if org.id not in existing_lead_org_ids and org.id not in added_org_ids:
+            added_org_ids.add(org.id)
+            tl = TaskLead(
+                task_id=task.id,
+                organization_id=org.id,
+                qualification_status="QUALIFIED",
+                confidence=org.confidence or "HIGH",
+                identity_verified=True,
+                category_verified=True,
+                location_verified=True,
+                official_website_verified=True
+            )
+            db.add(tl)
 
     db.commit()
     sync_task_counters(db, task.id)
@@ -172,6 +186,7 @@ def create_task(
         db.commit()
         background_tasks.add_task(run_scraping_task, task.id)
     
+    task.fast_verified_results = pre_verified_orgs
     return task
 
 @router.get("", response_model=List[ScrapingTaskResponse])

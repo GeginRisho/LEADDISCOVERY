@@ -312,6 +312,27 @@ class ApiClient {
     return null;
   }
 
+  public setTaskLeadsCache(taskId: string, leads: Lead[]) {
+    if (typeof window === "undefined" || !taskId || !Array.isArray(leads)) return;
+    this.memoryCache.set(`/api/tasks/${taskId}/leads`, { data: leads, timestamp: Date.now() });
+    try {
+      sessionStorage.setItem(`task_leads_cache_${taskId}`, JSON.stringify(leads));
+    } catch {}
+  }
+
+  public getCachedTaskLeads(taskId: string): Lead[] | null {
+    const fromMemory = this.memoryCache.get(`/api/tasks/${taskId}/leads`);
+    if (fromMemory?.data) return fromMemory.data as Lead[];
+
+    if (typeof window !== "undefined") {
+      try {
+        const raw = sessionStorage.getItem(`task_leads_cache_${taskId}`);
+        if (raw) return JSON.parse(raw) as Lead[];
+      } catch {}
+    }
+    return null;
+  }
+
   // TASKS API
   async createTask(data: {
     location: string;
@@ -321,7 +342,7 @@ class ApiClient {
     max_pages_per_site?: number;
     requested_fields?: string[];
     required_fields?: string[];
-  }): Promise<ScrapingTask> {
+  }): Promise<ScrapingTask & { fast_verified_results?: Lead[] }> {
     const res = await this.request("/api/tasks", {
       method: "POST",
       body: JSON.stringify(data)
@@ -330,6 +351,9 @@ class ApiClient {
     this.clearCache("overview");
     if (res && res.public_task_id) {
       this.setTaskCache(res);
+      if (Array.isArray(res.fast_verified_results) && res.fast_verified_results.length > 0) {
+        this.setTaskLeadsCache(res.public_task_id, res.fast_verified_results);
+      }
     }
     return res;
   }
@@ -355,7 +379,11 @@ class ApiClient {
   }
 
   async getTaskLeads(id: string): Promise<Lead[]> {
-    return this.cachedGet<Lead[]>(`/api/tasks/${id}/leads`, 15_000);
+    const leads = await this.cachedGet<Lead[]>(`/api/tasks/${id}/leads`, 15_000);
+    if (Array.isArray(leads)) {
+      this.setTaskLeadsCache(id, leads);
+    }
+    return leads;
   }
 
   async cancelTask(id: string): Promise<{ message: string }> {

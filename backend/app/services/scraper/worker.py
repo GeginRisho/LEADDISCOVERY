@@ -624,12 +624,12 @@ async def run_scraping_task(task_id: int):
             else:
                 web = Website(
                     organization_id=org.id,
-                    domain=web_domain,
+                    domain=web_domain or (extract_domain(web_url) if web_url else f"no-website-{org.id}.local"),
                     url=web_url,
                     status=lead.get("website_status", "ACTIVE"),
                     reason=lead.get("website_reason"),
-                    discovery_source=lead["discovery_source"],
-                    confidence=lead["confidence"]
+                    discovery_source=lead.get("discovery_source", "Scraper"),
+                    confidence=lead.get("confidence", "MEDIUM")
                 )
                 db.add(web)
                 db.flush()

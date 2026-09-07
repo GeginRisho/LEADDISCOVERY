@@ -17,6 +17,8 @@ class ScrapingTaskCreate(BaseModel):
         description="Fields required for a lead to qualify in final results"
     )
 
+from app.schemas.leads import OrganizationLeadResponse
+
 class ScrapingTaskResponse(BaseModel):
     id: int
     public_task_id: str
@@ -45,6 +47,7 @@ class ScrapingTaskResponse(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    fast_verified_results: Optional[List[OrganizationLeadResponse]] = None
 
     class Config:
         from_attributes = True

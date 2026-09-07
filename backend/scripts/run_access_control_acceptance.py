@@ -16,6 +16,20 @@ def run_acceptance_tests():
     print("LEADDISCOVERY — REAL-WORLD ACCESS CONTROL ACCEPTANCE VERIFICATION")
     print("================================================================")
 
+    # Clean up existing test organizations from previous runs
+    db_cleanup = SessionLocal()
+    try:
+        db_cleanup.query(Organization).filter(
+            Organization.name.in_([
+                "Grand Heritage Resort Puducherry",
+                "Grand Heritage Resort Chennai",
+                "Ocean Breeze Resort Puducherry"
+            ])
+        ).delete(synchronize_session=False)
+        db_cleanup.commit()
+    finally:
+        db_cleanup.close()
+
     # 1. Login as Normal User
     print("\n[Step A] Logging in as Normal USER (testuser@leaddiscovery.com)...")
     login_user_res = client.post("/api/auth/login", json={"email": "testuser@leaddiscovery.com", "password": "User@12345"})
@@ -96,6 +110,13 @@ def run_acceptance_tests():
         state="Puducherry UT",
         country="India",
         admin_verified=False,
+        identity_verified=True,
+        category_verified=True,
+        country_verified=True,
+        state_verified=True,
+        district_verified=True,
+        location_verified=True,
+        official_website_verified=True,
         source_type="SCRAPER_VERIFIED",
         confidence="HIGH"
     )
@@ -111,7 +132,7 @@ def run_acceptance_tests():
 
         # 5. Normal User Search
         print("\n[Step F] Normal USER performing Fast Search: category='Resort', location='Puducherry'...")
-        search_res = client.get("/api/search/fast?category=Resort&location=Puducherry", headers=user_headers)
+        search_res = client.get("/api/search/fast?category=Resort&location=Puducherry&limit=100", headers=user_headers)
         assert search_res.status_code == 200, f"Fast search failed: {search_res.text}"
         results = search_res.json().get("results", [])
         print(f"-> Returned {len(results)} verified resort(s) in Puducherry.")

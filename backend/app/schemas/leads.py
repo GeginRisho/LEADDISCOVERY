@@ -81,7 +81,7 @@ class WebsiteSchema(BaseModel):
 
 class OrganizationLeadResponse(BaseModel):
     id: int
-    task_id: int
+    task_id: Optional[int] = None
     name: str
     category: Optional[str] = None
     discovery_source_url: Optional[str] = None
