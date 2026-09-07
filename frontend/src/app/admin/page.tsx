@@ -18,12 +18,21 @@ export default function AdminDashboardPage() {
     async function loadAdminData() {
       try {
         setLoading(true);
-        const [statsData, tasksData] = await Promise.all([
+        const [statsResult, tasksResult] = await Promise.allSettled([
           api.getAdminOverview(),
           api.getAdminTasks()
         ]);
-        setOverview(statsData);
-        setRecentTasks(tasksData.slice(0, 5));
+
+        if (statsResult.status === "fulfilled") {
+          setOverview(statsResult.value);
+        }
+        if (tasksResult.status === "fulfilled") {
+          setRecentTasks(tasksResult.value.slice(0, 5));
+        }
+
+        if (statsResult.status === "rejected" && tasksResult.status === "rejected") {
+          setError("Failed to load admin metrics.");
+        }
       } catch (err: any) {
         setError(err.message || "Failed to load admin overview data.");
       } finally {

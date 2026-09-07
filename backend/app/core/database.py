@@ -108,6 +108,10 @@ def migrate_schema(eng):
         "CREATE INDEX IF NOT EXISTS idx_branch_district ON org_branches(district)",
         "CREATE INDEX IF NOT EXISTS idx_branch_city ON org_branches(city)",
         "CREATE INDEX IF NOT EXISTS idx_branch_state ON org_branches(state)",
+        "CREATE INDEX IF NOT EXISTS idx_org_category_district ON organizations(category, district)",
+        "CREATE INDEX IF NOT EXISTS idx_org_district_city ON organizations(district, city)",
+        "CREATE INDEX IF NOT EXISTS idx_org_verification ON organizations(admin_verified, confidence)",
+        "CREATE INDEX IF NOT EXISTS idx_tasks_user_status ON scraping_tasks(user_id, status)",
     ]
     with eng.connect() as conn:
         for stmt in statements:

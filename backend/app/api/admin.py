@@ -20,45 +20,51 @@ def get_admin_overview(
     db: Session = Depends(get_db),
     admin_user: User = Depends(get_current_admin_user)
 ):
-    total_users = db.query(func.count(User.id)).scalar() or 0
-    total_admins = db.query(func.count(User.id)).filter(User.role == "ADMIN").scalar() or 0
-    total_normal_users = db.query(func.count(User.id)).filter(User.role == "USER").scalar() or 0
-    active_users = db.query(func.count(User.id)).filter(User.status == "ACTIVE").scalar() or 0
-    suspended_users = db.query(func.count(User.id)).filter(User.status == "SUSPENDED").scalar() or 0
+    # 1. Aggregate User Metrics in 1 Query
+    user_row = db.query(
+        func.count(User.id).label("total"),
+        func.sum(case((User.role == "ADMIN", 1), else_=0)).label("admins"),
+        func.sum(case((User.role == "USER", 1), else_=0)).label("normal"),
+        func.sum(case((User.status == "ACTIVE", 1), else_=0)).label("active"),
+        func.sum(case((User.status == "SUSPENDED", 1), else_=0)).label("suspended")
+    ).first()
 
-    total_tasks = db.query(func.count(ScrapingTask.id)).scalar() or 0
-    running_tasks = db.query(func.count(ScrapingTask.id)).filter(ScrapingTask.status == "RUNNING").scalar() or 0
-    completed_tasks = db.query(func.count(ScrapingTask.id)).filter(ScrapingTask.status == "COMPLETED").scalar() or 0
-    failed_tasks = db.query(func.count(ScrapingTask.id)).filter(ScrapingTask.status == "FAILED").scalar() or 0
+    # 2. Aggregate Task Metrics in 1 Query
+    task_row = db.query(
+        func.count(ScrapingTask.id).label("total"),
+        func.sum(case((ScrapingTask.status == "RUNNING", 1), else_=0)).label("running"),
+        func.sum(case((ScrapingTask.status == "COMPLETED", 1), else_=0)).label("completed"),
+        func.sum(case((ScrapingTask.status == "FAILED", 1), else_=0)).label("failed"),
+        func.coalesce(func.sum(ScrapingTask.discovered_count), 0).label("discovered"),
+        func.coalesce(func.sum(ScrapingTask.websites_found), 0).label("websites_found"),
+        func.coalesce(func.sum(ScrapingTask.websites_crawled), 0).label("websites_crawled"),
+        func.coalesce(func.sum(ScrapingTask.failed_count), 0).label("failed_crawls")
+    ).first()
 
-    total_discovered = db.query(func.sum(ScrapingTask.discovered_count)).scalar() or 0
-    total_websites_found = db.query(func.sum(ScrapingTask.websites_found)).scalar() or 0
-    total_websites_crawled = db.query(func.sum(ScrapingTask.websites_crawled)).scalar() or 0
-    total_failed_crawls = db.query(func.sum(ScrapingTask.failed_count)).scalar() or 0
-
+    # 3. Aggregate Entities Count
     total_leads = db.query(func.count(Organization.id)).scalar() or 0
     total_emails = db.query(func.count(EmailAddress.id)).scalar() or 0
     total_phones = db.query(func.count(PhoneNumber.id)).scalar() or 0
     total_socials = db.query(func.count(SocialLink.id)).scalar() or 0
 
     return {
-        "total_users": total_users,
-        "total_admins": total_admins,
-        "total_normal_users": total_normal_users,
-        "active_users": active_users,
-        "suspended_users": suspended_users,
-        "total_tasks": total_tasks,
-        "running_tasks": running_tasks,
-        "completed_tasks": completed_tasks,
-        "failed_tasks": failed_tasks,
-        "total_discovered": total_discovered,
-        "total_websites_found": total_websites_found,
-        "total_websites_crawled": total_websites_crawled,
-        "total_failed_crawls": total_failed_crawls,
-        "total_leads": total_leads,
-        "total_emails": total_emails,
-        "total_phones": total_phones,
-        "total_socials": total_socials
+        "total_users": int(user_row.total or 0),
+        "total_admins": int(user_row.admins or 0),
+        "total_normal_users": int(user_row.normal or 0),
+        "active_users": int(user_row.active or 0),
+        "suspended_users": int(user_row.suspended or 0),
+        "total_tasks": int(task_row.total or 0),
+        "running_tasks": int(task_row.running or 0),
+        "completed_tasks": int(task_row.completed or 0),
+        "failed_tasks": int(task_row.failed or 0),
+        "total_discovered": int(task_row.discovered or 0),
+        "total_websites_found": int(task_row.websites_found or 0),
+        "total_websites_crawled": int(task_row.websites_crawled or 0),
+        "total_failed_crawls": int(task_row.failed_crawls or 0),
+        "total_leads": int(total_leads),
+        "total_emails": int(total_emails),
+        "total_phones": int(total_phones),
+        "total_socials": int(total_socials)
     }
 
 @router.get("/users")
@@ -137,9 +143,21 @@ def list_admin_tasks(
         query = query.filter(ScrapingTask.status == status)
 
     tasks = query.order_by(ScrapingTask.created_at.desc()).limit(limit).all()
+    if not tasks:
+        return []
+
+    task_ids = [t.id for t in tasks]
+    lead_counts_query = (
+        db.query(Organization.task_id, func.count(Organization.id))
+        .filter(Organization.task_id.in_(task_ids))
+        .group_by(Organization.task_id)
+        .all()
+    )
+    lead_counts_map = {tid: count for tid, count in lead_counts_query if tid is not None}
+
     task_list = []
     for t in tasks:
-        lead_count = db.query(func.count(Organization.id)).filter(Organization.task_id == t.id).scalar() or 0
+        lead_count = lead_counts_map.get(t.id, 0)
         task_list.append({
             "id": t.id,
             "task_id": t.public_task_id,

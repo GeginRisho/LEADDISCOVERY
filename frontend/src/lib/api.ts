@@ -107,7 +107,8 @@ export interface Lead {
 }
 
 class ApiClient {
-  private currentUserPromise: Promise<User> | null = null;
+  private inFlightRequests: Map<string, Promise<any>> = new Map();
+  private memoryCache: Map<string, { data: any; timestamp: number }> = new Map();
 
   private getToken(): string | null {
     if (typeof window !== "undefined") {
@@ -151,7 +152,53 @@ class ApiClient {
       localStorage.removeItem("token");
       localStorage.removeItem("user_profile");
     }
-    this.currentUserPromise = null;
+    this.memoryCache.clear();
+    this.inFlightRequests.clear();
+  }
+
+  public clearCache(pattern?: string) {
+    if (!pattern) {
+      this.memoryCache.clear();
+      return;
+    }
+    for (const key of this.memoryCache.keys()) {
+      if (key.includes(pattern)) {
+        this.memoryCache.delete(key);
+      }
+    }
+  }
+
+  private async cachedGet<T>(endpoint: string, ttlMs: number): Promise<T> {
+    const cached = this.memoryCache.get(endpoint);
+    const now = Date.now();
+
+    // Fresh cache: return immediately (< 1ms)
+    if (cached && (now - cached.timestamp) < ttlMs) {
+      return cached.data as T;
+    }
+
+    // In-flight deduplication: reuse running request promise
+    let inFlight = this.inFlightRequests.get(endpoint);
+    if (!inFlight) {
+      inFlight = this.request(endpoint)
+        .then((data) => {
+          this.memoryCache.set(endpoint, { data, timestamp: Date.now() });
+          this.inFlightRequests.delete(endpoint);
+          return data;
+        })
+        .catch((err) => {
+          this.inFlightRequests.delete(endpoint);
+          throw err;
+        });
+      this.inFlightRequests.set(endpoint, inFlight);
+    }
+
+    // Stale-while-revalidate: return stale cached data instantly while background revalidates
+    if (cached) {
+      return cached.data as T;
+    }
+
+    return inFlight;
   }
 
   private async request(endpoint: string, options: RequestInit = {}): Promise<any> {
@@ -230,20 +277,11 @@ class ApiClient {
   }
 
   async getMe(): Promise<User> {
-    if (this.currentUserPromise) {
-      return this.currentUserPromise;
+    const user = await this.cachedGet<User>("/api/auth/me", 300_000); // 5 min TTL
+    if (user) {
+      this.setCachedUser(user);
     }
-    this.currentUserPromise = this.request("/api/auth/me")
-      .then((userData) => {
-        this.setCachedUser(userData);
-        this.currentUserPromise = null;
-        return userData;
-      })
-      .catch((err) => {
-        this.currentUserPromise = null;
-        throw err;
-      });
-    return this.currentUserPromise;
+    return user;
   }
 
   // TASKS API
@@ -256,43 +294,51 @@ class ApiClient {
     requested_fields?: string[];
     required_fields?: string[];
   }): Promise<ScrapingTask> {
-    return this.request("/api/tasks", {
+    const res = await this.request("/api/tasks", {
       method: "POST",
       body: JSON.stringify(data)
     });
+    this.clearCache("tasks");
+    this.clearCache("overview");
+    return res;
   }
 
   async getTasks(page: number = 1, limit: number = 50): Promise<ScrapingTask[]> {
-    return this.request(`/api/tasks?page=${page}&limit=${limit}`);
+    return this.cachedGet<ScrapingTask[]>(`/api/tasks?page=${page}&limit=${limit}`, 15_000);
   }
 
   async getTask(id: string): Promise<ScrapingTask> {
-    return this.request(`/api/tasks/${id}`);
+    return this.cachedGet<ScrapingTask>(`/api/tasks/${id}`, 15_000);
   }
 
   async getTaskLogs(id: string): Promise<ScrapingLog[]> {
-    return this.request(`/api/tasks/${id}/logs`);
+    return this.cachedGet<ScrapingLog[]>(`/api/tasks/${id}/logs`, 15_000);
   }
 
   async getTaskLeads(id: string): Promise<Lead[]> {
-    return this.request(`/api/tasks/${id}/leads`);
+    return this.cachedGet<Lead[]>(`/api/tasks/${id}/leads`, 15_000);
   }
 
   async cancelTask(id: string): Promise<{ message: string }> {
-    return this.request(`/api/tasks/${id}/cancel`, {
+    const res = await this.request(`/api/tasks/${id}/cancel`, {
       method: "POST"
     });
+    this.clearCache("tasks");
+    return res;
   }
 
   // LEADS API
   async getLead(id: number): Promise<Lead> {
-    return this.request(`/api/leads/${id}`);
+    return this.cachedGet<Lead>(`/api/leads/${id}`, 30_000);
   }
 
   async deleteLead(id: number): Promise<{ message: string }> {
-    return this.request(`/api/leads/${id}`, {
+    const res = await this.request(`/api/leads/${id}`, {
       method: "DELETE"
     });
+    this.clearCache("leads");
+    this.clearCache("tasks");
+    return res;
   }
 
   // EXPORTS
@@ -302,22 +348,24 @@ class ApiClient {
 
   // ADMIN API
   async getAdminOverview(): Promise<any> {
-    return this.request("/api/admin/overview");
+    return this.cachedGet<any>("/api/admin/overview", 20_000);
   }
 
   async getAdminUsers(): Promise<any[]> {
-    return this.request("/api/admin/users");
+    return this.cachedGet<any[]>("/api/admin/users", 20_000);
   }
 
   async updateAdminUserStatusOrRole(userId: number, payload: { role?: string; status?: string }): Promise<any> {
-    return this.request(`/api/admin/users/${userId}`, {
+    const res = await this.request(`/api/admin/users/${userId}`, {
       method: "PATCH",
       body: JSON.stringify(payload)
     });
+    this.clearCache("admin");
+    return res;
   }
 
   async getAdminTasks(): Promise<any[]> {
-    return this.request("/api/admin/tasks");
+    return this.cachedGet<any[]>("/api/admin/tasks", 15_000);
   }
 
   async getAdminLogs(taskId?: string, eventType?: string): Promise<ScrapingLog[]> {
@@ -325,11 +373,11 @@ class ApiClient {
     if (taskId) params.append("task_id", taskId);
     if (eventType) params.append("event_type", eventType);
     const q = params.toString();
-    return this.request(`/api/admin/logs${q ? "?" + q : ""}`);
+    return this.cachedGet<ScrapingLog[]>(`/api/admin/logs${q ? "?" + q : ""}`, 15_000);
   }
 
   async getAdminHealth(): Promise<any> {
-    return this.request("/api/admin/health");
+    return this.cachedGet<any>("/api/admin/health", 10_000);
   }
 
   // ORGANIZATIONS & DISTRICTS API
@@ -341,7 +389,7 @@ class ApiClient {
     total_phones: number;
     total_emails: number;
   }> {
-    return this.request("/api/organizations/stats");
+    return this.cachedGet("/api/organizations/stats", 30_000);
   }
 
   async getDistrictStats(): Promise<Array<{
@@ -357,7 +405,7 @@ class ApiClient {
     hotels_count: number;
     hospitals_count: number;
   }>> {
-    return this.request("/api/organizations/districts");
+    return this.cachedGet("/api/organizations/districts", 60_000);
   }
 
   async getOrganizations(params?: {
@@ -390,7 +438,7 @@ class ApiClient {
     if (params?.page) qp.append("page", params.page.toString());
     if (params?.limit) qp.append("limit", params.limit.toString());
     const str = qp.toString();
-    return this.request(`/api/organizations${str ? "?" + str : ""}`);
+    return this.cachedGet(`/api/organizations${str ? "?" + str : ""}`, 30_000);
   }
 
   async getOrganizationMatrix(): Promise<Array<{
@@ -403,7 +451,7 @@ class ApiClient {
     it_companies: number;
     total: number;
   }>> {
-    return this.request("/api/organizations/matrix");
+    return this.cachedGet("/api/organizations/matrix", 30_000);
   }
 
   async addOrganizationManual(data: {
@@ -418,46 +466,59 @@ class ApiClient {
     whatsapp?: string;
     confidence?: string;
   }): Promise<{ message: string; id: number }> {
-    return this.request("/api/organizations/manual", {
+    const res = await this.request("/api/organizations/manual", {
       method: "POST",
       body: JSON.stringify(data)
     });
+    this.clearCache("organizations");
+    this.clearCache("search");
+    return res;
   }
 
-
-
   async updateOrganization(id: number, data: any): Promise<{ message: string }> {
-    return this.request(`/api/organizations/${id}`, {
+    const res = await this.request(`/api/organizations/${id}`, {
       method: "PUT",
       body: JSON.stringify(data)
     });
+    this.clearCache("organizations");
+    this.clearCache("search");
+    return res;
   }
 
   async deleteOrganization(id: number): Promise<{ message: string }> {
-    return this.request(`/api/organizations/${id}`, {
+    const res = await this.request(`/api/organizations/${id}`, {
       method: "DELETE"
     });
+    this.clearCache("organizations");
+    this.clearCache("search");
+    return res;
   }
 
   async verifyOrganization(id: number): Promise<{ message: string }> {
-    return this.request(`/api/organizations/${id}/verify`, {
+    const res = await this.request(`/api/organizations/${id}/verify`, {
       method: "POST"
     });
+    this.clearCache("organizations");
+    this.clearCache("search");
+    return res;
   }
 
   async unverifyOrganization(id: number): Promise<{ message: string }> {
-    return this.request(`/api/organizations/${id}/unverify`, {
+    const res = await this.request(`/api/organizations/${id}/unverify`, {
       method: "POST"
     });
+    this.clearCache("organizations");
+    this.clearCache("search");
+    return res;
   }
 
   // DISCOVERY CAMPAIGNS API
   async getCampaigns(): Promise<any[]> {
-    return this.request("/api/campaigns");
+    return this.cachedGet<any[]>("/api/campaigns", 30_000);
   }
 
   async getCampaignDetail(id: number): Promise<any> {
-    return this.request(`/api/campaigns/${id}`);
+    return this.cachedGet<any>(`/api/campaigns/${id}`, 15_000);
   }
 
   async createCampaign(data: {
@@ -468,47 +529,63 @@ class ApiClient {
     max_pages_per_site?: number;
     auto_start?: boolean;
   }): Promise<any> {
-    return this.request("/api/campaigns", {
+    const res = await this.request("/api/campaigns", {
       method: "POST",
       body: JSON.stringify(data)
     });
+    this.clearCache("campaigns");
+    return res;
   }
 
   async startCampaign(id: number): Promise<{ message: string }> {
-    return this.request(`/api/campaigns/${id}/start`, { method: "POST" });
+    const res = await this.request(`/api/campaigns/${id}/start`, { method: "POST" });
+    this.clearCache("campaigns");
+    return res;
   }
 
   async pauseCampaign(id: number): Promise<{ message: string }> {
-    return this.request(`/api/campaigns/${id}/pause`, { method: "POST" });
+    const res = await this.request(`/api/campaigns/${id}/pause`, { method: "POST" });
+    this.clearCache("campaigns");
+    return res;
   }
 
   async cancelCampaign(id: number): Promise<{ message: string }> {
-    return this.request(`/api/campaigns/${id}/cancel`, { method: "POST" });
+    const res = await this.request(`/api/campaigns/${id}/cancel`, { method: "POST" });
+    this.clearCache("campaigns");
+    return res;
   }
 
   async resumeCampaign(id: number): Promise<{ message: string }> {
-    return this.request(`/api/campaigns/${id}/resume`, { method: "POST" });
+    const res = await this.request(`/api/campaigns/${id}/resume`, { method: "POST" });
+    this.clearCache("campaigns");
+    return res;
   }
 
   async runAllTamilNadu(category: string, max_results_per_region: number = 15): Promise<any> {
-    return this.request("/api/campaigns/run-all-tn", {
+    const res = await this.request("/api/campaigns/run-all-tn", {
       method: "POST",
       body: JSON.stringify({ category, max_results_per_region })
     });
+    this.clearCache("campaigns");
+    return res;
   }
 
   async runPuducherry(category: string, max_results_per_region: number = 15): Promise<any> {
-    return this.request("/api/campaigns/run-puducherry", {
+    const res = await this.request("/api/campaigns/run-puducherry", {
       method: "POST",
       body: JSON.stringify({ category, max_results_per_region })
     });
+    this.clearCache("campaigns");
+    return res;
   }
 
   async runAllRegions(category: string, max_results_per_region: number = 15): Promise<any> {
-    return this.request("/api/campaigns/run-all", {
+    const res = await this.request("/api/campaigns/run-all", {
       method: "POST",
       body: JSON.stringify({ category, max_results_per_region })
     });
+    this.clearCache("campaigns");
+    return res;
   }
 
   // ADMIN MASTER ORGANIZATIONS API
@@ -528,56 +605,77 @@ class ApiClient {
         if (v !== undefined && v !== null && v !== "") q.append(k, String(v));
       });
     }
-    return this.request(`/api/admin/organizations?${q.toString()}`);
+    return this.cachedGet(`/api/admin/organizations?${q.toString()}`, 30_000);
   }
 
   async getAdminOrganization(id: number): Promise<any> {
-    return this.request(`/api/admin/organizations/${id}`);
+    return this.cachedGet(`/api/admin/organizations/${id}`, 30_000);
   }
 
   async createAdminOrganization(data: any): Promise<any> {
-    return this.request("/api/admin/organizations", {
+    const res = await this.request("/api/admin/organizations", {
       method: "POST",
       body: JSON.stringify(data)
     });
+    this.clearCache("organizations");
+    this.clearCache("search");
+    return res;
   }
 
   async updateAdminOrganization(id: number, data: any): Promise<any> {
-    return this.request(`/api/admin/organizations/${id}`, {
+    const res = await this.request(`/api/admin/organizations/${id}`, {
       method: "PUT",
       body: JSON.stringify(data)
     });
+    this.clearCache("organizations");
+    this.clearCache("search");
+    return res;
   }
 
   async deleteAdminOrganization(id: number): Promise<any> {
-    return this.request(`/api/admin/organizations/${id}`, {
+    const res = await this.request(`/api/admin/organizations/${id}`, {
       method: "DELETE"
     });
+    this.clearCache("organizations");
+    this.clearCache("search");
+    return res;
   }
 
   async addAdminBranch(orgId: number, data: any): Promise<any> {
-    return this.request(`/api/admin/organizations/${orgId}/branches`, {
+    const res = await this.request(`/api/admin/organizations/${orgId}/branches`, {
       method: "POST",
       body: JSON.stringify(data)
     });
+    this.clearCache("organizations");
+    this.clearCache("search");
+    return res;
   }
 
   async deleteAdminBranch(branchId: number): Promise<any> {
-    return this.request(`/api/admin/branches/${branchId}`, {
+    const res = await this.request(`/api/admin/branches/${branchId}`, {
       method: "DELETE"
     });
+    this.clearCache("organizations");
+    this.clearCache("search");
+    return res;
   }
 
   async verifyAdminOrganization(id: number): Promise<any> {
-    return this.request(`/api/admin/organizations/${id}/verify`, {
+    const res = await this.request(`/api/admin/organizations/${id}/verify`, {
       method: "POST"
     });
+    this.clearCache("organizations");
+    this.clearCache("search");
+    return res;
   }
 
   async unverifyAdminOrganization(id: number): Promise<any> {
-    return this.request(`/api/admin/organizations/${id}/unverify`, {
+    const res = await this.request(`/api/admin/organizations/${id}/unverify`, {
       method: "POST"
     });
+    this.clearCache("organizations");
+    this.clearCache("search");
+    return res;
   }
 }
 

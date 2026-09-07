@@ -165,12 +165,39 @@ export default function MasterOrganizationsPage() {
   };
 
   useEffect(() => {
-    fetchStats();
-    fetchDistricts();
-  }, []);
+    let isMounted = true;
+    const loadAllData = async () => {
+      setLoading(true);
+      await Promise.allSettled([
+        api.getOrganizationSummaryStats().then(s => { if (isMounted) setStats(s); }).catch(err => checkAccessError(err)),
+        api.getDistrictStats().then(dists => { if (isMounted) setDistrictsList(dists.map(d => d.district_name)); }).catch(err => checkAccessError(err)),
+        api.getOrganizations({
+          district: selectedDistrict,
+          category: selectedCategory,
+          country: selectedCountry,
+          state: selectedState,
+          city: selectedCity,
+          verification_status: selectedVerificationStatus,
+          search: search,
+          page: page,
+          limit: limit
+        }).then(res => {
+          if (isMounted) {
+            setOrganizations(res.organizations);
+            setTotal(res.total);
+            setPages(res.pages);
+          }
+        }).catch(err => {
+          if (isMounted && !checkAccessError(err)) {
+            showToast(err.message || "Failed to load master organizations.", "error");
+          }
+        })
+      ]);
+      if (isMounted) setLoading(false);
+    };
 
-  useEffect(() => {
-    fetchOrgs();
+    loadAllData();
+    return () => { isMounted = false; };
   }, [selectedDistrict, selectedCategory, selectedCountry, selectedState, selectedCity, selectedVerificationStatus, search, page, limit]);
 
   const openAddModal = () => {
