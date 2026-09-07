@@ -201,11 +201,6 @@ def get_task_status(
     task = find_task_by_id_or_public(task_id, db)
     if current_user.role != "ADMIN" and task.user_id and task.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied to this task.")
-    
-    if task.status in ("COMPLETED", "COMPLETED_BELOW_MINIMUM", "FAILED", "COMPLETED_WITH_NO_RESULTS"):
-        sync_task_counters(db, task.id)
-        db.refresh(task)
-        
     return task
 
 @router.post("/{task_id}/cancel")

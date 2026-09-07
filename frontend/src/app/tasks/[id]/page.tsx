@@ -16,7 +16,7 @@ export default function TaskDetailsPage() {
   const { showToast } = useToast();
   const taskId = params.id as string;
 
-  const [task, setTask] = useState<ScrapingTask | null>(null);
+  const [task, setTask] = useState<ScrapingTask | null>(() => api.getCachedTask(taskId));
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
@@ -31,6 +31,12 @@ export default function TaskDetailsPage() {
 
   useEffect(() => {
     let isMounted = true;
+
+    // Check cache immediately when taskId changes
+    const cachedTask = api.getCachedTask(taskId);
+    if (cachedTask && isMounted) {
+      setTask(cachedTask);
+    }
 
     async function fetchInitialData() {
       try {
@@ -66,9 +72,8 @@ export default function TaskDetailsPage() {
 
   // Safe Polling Loop
   useEffect(() => {
-    if (!task) return;
-    
-    const isFinished = ["COMPLETED", "COMPLETED_BELOW_MINIMUM", "COMPLETED_WITH_NO_RESULTS", "FAILED", "CANCELLED"].includes(task.status);
+    const currentStatus = task?.status || "RUNNING";
+    const isFinished = ["COMPLETED", "COMPLETED_BELOW_MINIMUM", "COMPLETED_WITH_NO_RESULTS", "FAILED", "CANCELLED"].includes(currentStatus);
     
     if (isFinished) {
       if (pollingRef.current) {
@@ -98,7 +103,7 @@ export default function TaskDetailsPage() {
         } catch (err) {
           console.error("Silent polling error", err);
         }
-      }, 1500);
+      }, 2500);
     }
 
     return () => {
@@ -171,25 +176,29 @@ export default function TaskDetailsPage() {
     return matchesSearch && matchesConf;
   });
 
-  if (loading && !task) {
-    return (
-      <div className="space-y-8 max-w-7xl">
-        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm animate-pulse space-y-3">
-          <div className="h-5 w-40 bg-gray-200 rounded"></div>
-          <div className="h-8 w-80 bg-gray-200 rounded"></div>
-          <div className="h-4 w-60 bg-gray-200 rounded"></div>
-        </div>
-      </div>
-    );
-  }
+  // Effective display task guarantees ZERO full-page skeleton blocking
+  const displayTask = task || ({
+    id: 0,
+    public_task_id: taskId,
+    location: "Target Location",
+    keyword: "Scraping Session",
+    radius: null,
+    max_results: 50,
+    max_pages_per_site: 15,
+    required_fields: [],
+    status: "RUNNING",
+    progress: 10,
+    error_info: null,
+    created_at: new Date().toISOString(),
+    started_at: null,
+    completed_at: null
+  } as any as ScrapingTask);
 
-  if (!task) return null;
-
-  const isRunning = task.status === "RUNNING" || task.status === "PENDING";
-  const isCompleted = task.status === "COMPLETED";
-  const isBelowMinimum = task.status === "COMPLETED_BELOW_MINIMUM";
-  const isZeroResults = task.status === "COMPLETED_WITH_NO_RESULTS";
-  const isFailed = task.status === "FAILED";
+  const isRunning = displayTask.status === "RUNNING" || displayTask.status === "PENDING";
+  const isCompleted = displayTask.status === "COMPLETED";
+  const isBelowMinimum = displayTask.status === "COMPLETED_BELOW_MINIMUM";
+  const isZeroResults = displayTask.status === "COMPLETED_WITH_NO_RESULTS";
+  const isFailed = displayTask.status === "FAILED";
 
   return (
     <div className="space-y-8 max-w-7xl">
@@ -198,7 +207,7 @@ export default function TaskDetailsPage() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">{task.public_task_id}</span>
+            <span className="text-xs font-mono font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">{displayTask.public_task_id}</span>
             <span className={`text-[10px] uppercase font-extrabold tracking-wider px-2.5 py-0.5 rounded border ${
               isCompleted ? "bg-emerald-50 border-emerald-200 text-emerald-700" :
               isBelowMinimum ? "bg-amber-50 border-amber-300 text-amber-900" :
@@ -207,17 +216,17 @@ export default function TaskDetailsPage() {
               isFailed ? "bg-red-50 border-red-200 text-red-700" :
               "bg-gray-100 border-gray-200 text-gray-600"
             }`}>
-              {task.status.replace(/_/g, " ")}
+              {displayTask.status.replace(/_/g, " ")}
             </span>
           </div>
           <h1 className="text-xl md:text-2xl font-black text-gray-900 flex items-center gap-2">
-            {task.keyword} <span className="text-gray-400 font-normal">in</span> {task.location}
+            {displayTask.keyword} <span className="text-gray-400 font-normal">in</span> {displayTask.location}
           </h1>
           <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-xs text-gray-500 font-semibold">
-            <span className="flex items-center gap-1"><Calendar className="h-4 w-4 text-orange-500" /> Created: {new Date(task.created_at).toLocaleString()}</span>
-            <span>Target Target: {Math.min(15, task.max_results)} min</span>
-            <span>Max Results: {task.max_results}</span>
-            <span>Max Pages/Site: {task.max_pages_per_site}</span>
+            <span className="flex items-center gap-1"><Calendar className="h-4 w-4 text-orange-500" /> Created: {new Date(displayTask.created_at).toLocaleString()}</span>
+            <span>Target: {Math.min(15, displayTask.max_results)} min</span>
+            <span>Max Results: {displayTask.max_results}</span>
+            <span>Max Pages/Site: {displayTask.max_pages_per_site}</span>
           </div>
         </div>
 
@@ -300,7 +309,7 @@ export default function TaskDetailsPage() {
           </div>
         )}
 
-        {task.status === "CANCELLED" && (
+        {displayTask.status === "CANCELLED" && (
           <div className="bg-gray-100 border border-gray-300 rounded-xl p-4 flex items-center gap-3">
             <Ban className="h-5 w-5 text-gray-600 shrink-0" />
             <div>
@@ -319,10 +328,10 @@ export default function TaskDetailsPage() {
           <AlertTriangle className="h-6 w-6 text-amber-600 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <h3 className="text-sm font-bold text-amber-900">
-              Completed Below Minimum Target ({leads.length} Verified Organizations Found, Target: {Math.min(15, task.max_results)})
+              Completed Below Minimum Target ({leads.length} Verified Organizations Found, Target: {Math.min(15, displayTask.max_results)})
             </h3>
             <p className="text-xs text-amber-800 font-medium">
-              {task.error_info || `Discovery budget was exhausted. Found ${leads.length} verified organizations matching location and quality filters.`}
+              {displayTask.error_info || `Discovery budget was exhausted. Found ${leads.length} verified organizations matching location and quality filters.`}
             </p>
           </div>
         </div>
@@ -336,7 +345,7 @@ export default function TaskDetailsPage() {
             <div className="space-y-1">
               <h3 className="text-sm font-bold text-amber-900">NO QUALIFIED LEADS / NO VERIFIED ORGANIZATIONS DISCOVERED</h3>
               <p className="text-xs text-amber-800 font-medium">
-                {task.error_info || "Discovery completed but no candidate organizations passed official website or location verification."}
+                {displayTask.error_info || "Discovery completed but no candidate organizations passed official website or location verification."}
               </p>
             </div>
           </div>

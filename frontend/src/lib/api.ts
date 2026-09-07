@@ -284,6 +284,34 @@ class ApiClient {
     return user;
   }
 
+  // TASK CACHE HELPERS
+  public setTaskCache(task: Partial<ScrapingTask> & { public_task_id?: string; id?: number }) {
+    if (typeof window === "undefined") return;
+    const key = task.public_task_id || (task.id ? `TASK-${task.id.toString().padStart(6, '0')}` : null);
+    if (!key) return;
+
+    const existing = this.getCachedTask(key) || {};
+    const merged = { ...existing, ...task, public_task_id: key };
+
+    this.memoryCache.set(`/api/tasks/${key}`, { data: merged, timestamp: Date.now() });
+    try {
+      sessionStorage.setItem(`task_cache_${key}`, JSON.stringify(merged));
+    } catch {}
+  }
+
+  public getCachedTask(taskId: string): ScrapingTask | null {
+    const fromMemory = this.memoryCache.get(`/api/tasks/${taskId}`);
+    if (fromMemory?.data) return fromMemory.data as ScrapingTask;
+
+    if (typeof window !== "undefined") {
+      try {
+        const raw = sessionStorage.getItem(`task_cache_${taskId}`);
+        if (raw) return JSON.parse(raw) as ScrapingTask;
+      } catch {}
+    }
+    return null;
+  }
+
   // TASKS API
   async createTask(data: {
     location: string;
@@ -300,15 +328,26 @@ class ApiClient {
     });
     this.clearCache("tasks");
     this.clearCache("overview");
+    if (res && res.public_task_id) {
+      this.setTaskCache(res);
+    }
     return res;
   }
 
   async getTasks(page: number = 1, limit: number = 50): Promise<ScrapingTask[]> {
-    return this.cachedGet<ScrapingTask[]>(`/api/tasks?page=${page}&limit=${limit}`, 15_000);
+    const tasks = await this.cachedGet<ScrapingTask[]>(`/api/tasks?page=${page}&limit=${limit}`, 15_000);
+    if (Array.isArray(tasks)) {
+      tasks.forEach((t) => this.setTaskCache(t));
+    }
+    return tasks;
   }
 
   async getTask(id: string): Promise<ScrapingTask> {
-    return this.cachedGet<ScrapingTask>(`/api/tasks/${id}`, 15_000);
+    const task = await this.cachedGet<ScrapingTask>(`/api/tasks/${id}`, 15_000);
+    if (task && task.public_task_id) {
+      this.setTaskCache(task);
+    }
+    return task;
   }
 
   async getTaskLogs(id: string): Promise<ScrapingLog[]> {

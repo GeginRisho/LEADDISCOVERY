@@ -64,15 +64,6 @@ export default function HistoryPage() {
     return matchesSearch && matchesStatus;
   });
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <Loader2 className="h-10 w-10 text-orange-500 animate-spin" />
-        <p className="text-sm font-semibold text-gray-600">Loading scraping history...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       
@@ -121,7 +112,12 @@ export default function HistoryPage() {
       </div>
 
       {/* History List Table */}
-      {filteredTasks.length === 0 ? (
+      {loading && filteredTasks.length === 0 ? (
+        <div className="bg-white border border-gray-200 rounded-2xl py-12 flex flex-col items-center justify-center text-center shadow-xs">
+          <Loader2 className="h-8 w-8 text-orange-500 animate-spin mb-2" />
+          <p className="text-xs font-bold text-gray-500">Loading scraping history...</p>
+        </div>
+      ) : filteredTasks.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-2xl py-16 flex flex-col items-center justify-center text-center shadow-xs">
           <History className="h-10 w-10 text-gray-300 mb-3" />
           <h4 className="text-sm font-bold text-gray-800">No sessions match query</h4>
@@ -140,6 +136,7 @@ export default function HistoryPage() {
             return (
               <div 
                 key={task.id}
+                onMouseEnter={() => api.setTaskCache(task)}
                 className="p-5 bg-white border border-gray-200 rounded-2xl shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-6 hover:border-orange-200 hover:shadow-md transition-all group"
               >
                 
@@ -168,21 +165,10 @@ export default function HistoryPage() {
                   </p>
                 </div>
 
-                {/* Progress bar info */}
-                <div className="w-full lg:w-48 space-y-1">
-                  <div className="flex justify-between text-[11px] text-gray-500 font-semibold">
-                    <span>Task progress</span>
-                    <span className="font-bold text-gray-800">{task.progress}%</span>
-                  </div>
-                  <div className="h-2 w-full bg-orange-50 border border-orange-100 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full ${
-                        isFailed ? "bg-red-500" :
-                        isCompleted ? "bg-emerald-500" : "bg-orange-500"
-                      }`}
-                      style={{ width: `${task.progress}%` }}
-                    ></div>
-                  </div>
+                {/* Target limit info (no fake progress bar) */}
+                <div className="w-full lg:w-40 space-y-1 text-xs text-gray-600 font-medium">
+                  <div><span className="font-bold text-gray-800">Target Max:</span> {task.max_results} orgs</div>
+                  <div><span className="font-bold text-gray-800">Depth:</span> {task.max_pages_per_site} pages/site</div>
                 </div>
 
                 {/* Hits stats */}
