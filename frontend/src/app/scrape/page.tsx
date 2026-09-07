@@ -255,7 +255,7 @@ export default function ScrapeCreatorPage() {
               className="w-full flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl py-3.5 shadow-md shadow-orange-500/20 active:scale-[0.98] transition-all disabled:opacity-50"
             >
               <Play className="h-4 w-4 fill-white" />
-              {loading ? "Initializing Task..." : "START SCRAPING"}
+              {loading ? "Starting Scrape..." : "START SCRAPING"}
             </button>
           </div>
         </div>

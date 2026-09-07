@@ -171,11 +171,14 @@ export default function TaskDetailsPage() {
     return matchesSearch && matchesConf;
   });
 
-  if (loading) {
+  if (loading && !task) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <Loader2 className="h-10 w-10 text-orange-500 animate-spin" />
-        <p className="text-sm font-semibold text-gray-600">Loading scraping session details...</p>
+      <div className="space-y-8 max-w-7xl">
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm animate-pulse space-y-3">
+          <div className="h-5 w-40 bg-gray-200 rounded"></div>
+          <div className="h-8 w-80 bg-gray-200 rounded"></div>
+          <div className="h-4 w-60 bg-gray-200 rounded"></div>
+        </div>
       </div>
     );
   }

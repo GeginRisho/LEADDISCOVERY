@@ -92,7 +92,30 @@ export default function LoginPage() {
         </button>
       </form>
 
-      <div className="mt-8 text-center border-t border-gray-100 pt-6">
+      {/* DEMO CREDENTIAL CHIPS */}
+      <div className="mt-6 pt-5 border-t border-gray-100 space-y-2">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Quick Demo Credentials</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => { setEmail("admin@leaddiscovery.com"); setPassword("admin123"); }}
+            className="flex flex-col items-start p-2.5 rounded-xl bg-orange-50/60 hover:bg-orange-100/80 border border-orange-200 text-left transition-all group"
+          >
+            <span className="text-[10px] font-extrabold text-orange-700 uppercase tracking-wider">Demo Admin</span>
+            <span className="text-xs font-semibold text-gray-800 truncate w-full">admin@leaddiscovery.com</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setEmail("user@leaddiscovery.com"); setPassword("user123"); }}
+            className="flex flex-col items-start p-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 text-left transition-all group"
+          >
+            <span className="text-[10px] font-extrabold text-gray-600 uppercase tracking-wider">Demo User</span>
+            <span className="text-xs font-semibold text-gray-800 truncate w-full">user@leaddiscovery.com</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-6 text-center border-t border-gray-100 pt-5">
         <p className="text-xs text-gray-500">
           Don&apos;t have an account?{" "}
           <Link href="/register" className="text-orange-600 hover:text-orange-700 font-semibold transition-colors">

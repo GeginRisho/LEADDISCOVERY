@@ -33,20 +33,9 @@ export default function AdminDashboardPage() {
     loadAdminData();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 text-orange-500 animate-spin" />
-          <p className="text-sm font-semibold text-gray-500">Loading Admin Dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
   if (error) {
     return (
-      <div className="p-6 bg-red-50 border border-red-200 rounded-2xl text-red-700">
+      <div className="p-6 bg-red-50 border border-red-200 rounded-2xl text-red-700 max-w-xl mx-auto my-8">
         <h3 className="font-bold text-base mb-1">Access Error</h3>
         <p className="text-sm mb-4">{error}</p>
         <Link href="/" className="px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700">
@@ -110,7 +99,11 @@ export default function AdminDashboardPage() {
                   <Icon className="h-4.5 w-4.5" />
                 </div>
               </div>
-              <p className="text-2xl font-extrabold text-gray-900 tracking-tight">{card.value.toLocaleString()}</p>
+              {loading ? (
+                <div className="h-7 w-16 bg-gray-200 animate-pulse rounded mt-1"></div>
+              ) : (
+                <p className="text-2xl font-extrabold text-gray-900 tracking-tight">{card.value.toLocaleString()}</p>
+              )}
             </div>
           );
         })}

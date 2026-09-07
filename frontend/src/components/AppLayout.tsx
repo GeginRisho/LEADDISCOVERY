@@ -36,8 +36,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   
-  const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
-  const [user, setUser] = useState<UserType | null>(null);
+  const [user, setUser] = useState<UserType | null>(() => {
+    if (typeof window !== "undefined" && localStorage.getItem("token")) {
+      return api.getCachedUser();
+    }
+    return null;
+  });
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(() => {
+    if (typeof window !== "undefined" && localStorage.getItem("token")) {
+      return "authenticated";
+    }
+    return "loading";
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -72,6 +82,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       // Optimistic authentication when token is present: render shell immediately!
       if (isMounted) {
         setAuthStatus("authenticated");
+        const cached = api.getCachedUser();
+        if (cached) {
+          setUser(cached);
+        }
       }
 
       try {
@@ -81,7 +95,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           setUser(userData);
           setIsServerConnecting(false);
           if (isAuthRoute) {
-            router.push("/");
+            router.push(userData.role === "ADMIN" ? "/admin" : "/");
           }
         }
       } catch (err: any) {

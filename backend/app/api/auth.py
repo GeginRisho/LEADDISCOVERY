@@ -63,7 +63,24 @@ def seed_default_users(db: Session):
         admin.role = "ADMIN"
         admin.status = "ACTIVE"
     
-    # 2. Seed default Normal Test User
+    # 2. Seed default Standard Normal User
+    standard_email = "user@leaddiscovery.com"
+    std_user = db.query(User).filter(func.lower(User.email) == standard_email).first()
+    if not std_user:
+        hashed_pwd = get_password_hash("user123")
+        std_user = User(
+            email=standard_email,
+            hashed_password=hashed_pwd,
+            role="USER",
+            status="ACTIVE"
+        )
+        db.add(std_user)
+    elif not verify_password("user123", std_user.hashed_password):
+        std_user.hashed_password = get_password_hash("user123")
+        std_user.role = "USER"
+        std_user.status = "ACTIVE"
+
+    # 3. Seed default Test User
     user_email = "testuser@leaddiscovery.com"
     test_user = db.query(User).filter(func.lower(User.email) == user_email).first()
     if not test_user:

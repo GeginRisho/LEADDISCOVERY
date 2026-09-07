@@ -107,6 +107,8 @@ export interface Lead {
 }
 
 class ApiClient {
+  private currentUserPromise: Promise<User> | null = null;
+
   private getToken(): string | null {
     if (typeof window !== "undefined") {
       return localStorage.getItem("token");
@@ -120,10 +122,36 @@ class ApiClient {
     }
   }
 
+  public getCachedUser(): User | null {
+    if (typeof window !== "undefined") {
+      const raw = localStorage.getItem("user_profile");
+      if (raw) {
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
+  }
+
+  public setCachedUser(user: User | null) {
+    if (typeof window !== "undefined") {
+      if (user) {
+        localStorage.setItem("user_profile", JSON.stringify(user));
+      } else {
+        localStorage.removeItem("user_profile");
+      }
+    }
+  }
+
   public removeToken() {
     if (typeof window !== "undefined") {
       localStorage.removeItem("token");
+      localStorage.removeItem("user_profile");
     }
+    this.currentUserPromise = null;
   }
 
   private async request(endpoint: string, options: RequestInit = {}): Promise<any> {
@@ -187,6 +215,10 @@ class ApiClient {
       body: JSON.stringify({ email, password })
     });
     this.setToken(res.access_token);
+    try {
+      const user = await this.getMe();
+      this.setCachedUser(user);
+    } catch {}
     return res;
   }
 
@@ -198,7 +230,20 @@ class ApiClient {
   }
 
   async getMe(): Promise<User> {
-    return this.request("/api/auth/me");
+    if (this.currentUserPromise) {
+      return this.currentUserPromise;
+    }
+    this.currentUserPromise = this.request("/api/auth/me")
+      .then((userData) => {
+        this.setCachedUser(userData);
+        this.currentUserPromise = null;
+        return userData;
+      })
+      .catch((err) => {
+        this.currentUserPromise = null;
+        throw err;
+      });
+    return this.currentUserPromise;
   }
 
   // TASKS API
