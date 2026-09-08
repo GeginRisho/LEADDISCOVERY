@@ -84,7 +84,7 @@ export default function AdminDashboardPage() {
             </span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Admin Control Center</h1>
-          <p className="text-sm text-gray-500">Live platform metrics, user management, and system-wide scraping logs.</p>
+          <p className="text-sm text-gray-500">Live platform metrics, user management, and system tasks monitoring.</p>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/admin/users" className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 shadow-xs">

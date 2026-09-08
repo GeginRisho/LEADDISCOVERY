@@ -77,9 +77,9 @@ export default function AdminTasksPage() {
                 <th className="px-6 py-3.5">User</th>
                 <th className="px-6 py-3.5">Target</th>
                 <th className="px-6 py-3.5">Status</th>
-                <th className="px-6 py-3.5">Discovered</th>
+                <th className="px-6 py-3.5" title="Number of raw candidates discovered before verification.">Raw Candidates</th>
                 <th className="px-6 py-3.5">Crawled</th>
-                <th className="px-6 py-3.5">Leads</th>
+                <th className="px-6 py-3.5" title="Verified organizations that passed the validation pipeline.">Verified Leads</th>
                 <th className="px-6 py-3.5">Created</th>
                 <th className="px-6 py-3.5 text-right">Actions</th>
               </tr>
@@ -153,7 +153,8 @@ export default function AdminTasksPage() {
               <div className="text-sm font-bold text-gray-900">{t.keyword} <span className="font-normal text-gray-500">in {t.location}</span></div>
               <div className="flex items-center justify-between text-xs text-gray-500 pt-1">
                 <span>User: {t.user_email}</span>
-                <span className="font-bold text-orange-600">{t.lead_count} Leads</span>
+                <span className="font-semibold text-gray-600">Raw Candidates: {t.discovered_count}</span>
+                <span className="font-bold text-orange-600">Verified Leads: {t.lead_count}</span>
               </div>
               <Link
                 href={`/tasks/${t.public_task_id}`}

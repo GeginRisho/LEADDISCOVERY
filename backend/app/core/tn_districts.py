@@ -53,13 +53,16 @@ ALL_REGIONS = TAMIL_NADU_DISTRICTS + [
 def seed_tn_districts(db: Session):
     for d in ALL_REGIONS:
         existing = db.query(District).filter(District.district_name == d["name"]).first()
+        target_state = d.get("state", "Tamil Nadu")
         if not existing:
             dist = District(
                 district_name=d["name"],
-                state=d.get("state", "Tamil Nadu"),
+                state=target_state,
                 country="India",
                 official_district_url=d["url"]
             )
             db.add(dist)
+        elif existing.state != target_state:
+            existing.state = target_state
     db.commit()
 

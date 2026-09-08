@@ -34,44 +34,65 @@ def get_organization_stats(
         "total_emails": total_emails
     }
 
-@router.get("/districts")
-def get_district_breakdown(db: Session = Depends(get_db)):
-    districts = db.query(District).order_by(District.district_name.asc()).all()
-    
+def _query_eligible_matrix_counts(db: Session):
+    # Enforce Part 11 Master Organization Eligibility Rules:
+    # Only count non-quarantined, verified organizations
     counts_query = db.query(
         func.lower(Organization.district).label("district"),
         func.lower(Organization.category).label("category"),
         func.count(Organization.id).label("count")
+    ).filter(
+        Organization.is_quarantined == False,
+        or_(
+            Organization.admin_verified == True,
+            Organization.source_type == "SCRAPER_VERIFIED"
+        )
     ).group_by(
         func.lower(Organization.district),
         func.lower(Organization.category)
     ).all()
-    
+
     counts_map = {}
     for d_name, cat, count in counts_query:
         if not d_name:
             continue
-        if d_name not in counts_map:
-            counts_map[d_name] = {"total": 0, "colleges": 0, "hotels": 0, "hospitals": 0, "companies": 0, "it_companies": 0, "schools": 0}
-        
-        counts_map[d_name]["total"] += count
+        d_key = d_name.strip().lower()
+        if d_key not in counts_map:
+            counts_map[d_key] = {"total": 0, "colleges": 0, "hotels": 0, "hospitals": 0, "companies": 0, "it_companies": 0, "schools": 0}
+
+        counts_map[d_key]["total"] += count
         cat_lower = (cat or "").lower()
-        if "college" in cat_lower or "university" in cat_lower:
-            counts_map[d_name]["colleges"] += count
-        if "hotel" in cat_lower or "resort" in cat_lower:
-            counts_map[d_name]["hotels"] += count
-        if "hospital" in cat_lower or "clinic" in cat_lower:
-            counts_map[d_name]["hospitals"] += count
-        if "company" in cat_lower:
-            counts_map[d_name]["companies"] += count
-        if "it" in cat_lower or "software" in cat_lower or "tech" in cat_lower:
-            counts_map[d_name]["it_companies"] += count
-        if "school" in cat_lower:
-            counts_map[d_name]["schools"] += count
+
+        is_college = "college" in cat_lower or "university" in cat_lower or "institution" in cat_lower
+        is_school = "school" in cat_lower or "cbse" in cat_lower or "academy" in cat_lower or "matriculation" in cat_lower
+        is_hotel = "hotel" in cat_lower or "resort" in cat_lower or "hospitality" in cat_lower or "lodging" in cat_lower
+        is_hospital = "hospital" in cat_lower or "clinic" in cat_lower or "healthcare" in cat_lower or "medical" in cat_lower
+        is_it = "it company" in cat_lower or "software" in cat_lower or "tech" in cat_lower or "information technology" in cat_lower
+        is_comp = "company" in cat_lower or "corporate" in cat_lower or "business" in cat_lower or "enterprise" in cat_lower
+
+        if is_college:
+            counts_map[d_key]["colleges"] += count
+        if is_school:
+            counts_map[d_key]["schools"] += count
+        if is_hotel:
+            counts_map[d_key]["hotels"] += count
+        if is_hospital:
+            counts_map[d_key]["hospitals"] += count
+        if is_it:
+            counts_map[d_key]["it_companies"] += count
+        if is_comp:
+            counts_map[d_key]["companies"] += count
+
+    return counts_map
+
+@router.get("/districts")
+def get_district_breakdown(db: Session = Depends(get_db)):
+    districts = db.query(District).order_by(District.district_name.asc()).all()
+    counts_map = _query_eligible_matrix_counts(db)
 
     result = []
     for dist in districts:
-        d_key = dist.district_name.lower()
+        d_key = dist.district_name.strip().lower()
         d_counts = counts_map.get(d_key, {"total": 0, "colleges": 0, "hotels": 0, "hospitals": 0, "companies": 0, "it_companies": 0, "schools": 0})
         result.append({
             "district_id": dist.id,
@@ -86,6 +107,28 @@ def get_district_breakdown(db: Session = Depends(get_db)):
             "companies_count": d_counts["companies"],
             "it_companies_count": d_counts["it_companies"],
             "schools_count": d_counts["schools"]
+        })
+
+    return result
+
+@router.get("/matrix")
+def get_organization_matrix(db: Session = Depends(get_db)):
+    districts = db.query(District).order_by(District.district_name.asc()).all()
+    counts_map = _query_eligible_matrix_counts(db)
+
+    result = []
+    for dist in districts:
+        d_key = dist.district_name.strip().lower()
+        d_counts = counts_map.get(d_key, {"total": 0, "colleges": 0, "hotels": 0, "hospitals": 0, "companies": 0, "it_companies": 0, "schools": 0})
+        result.append({
+            "region": dist.district_name,
+            "colleges": d_counts["colleges"],
+            "schools": d_counts["schools"],
+            "hotels": d_counts["hotels"],
+            "hospitals": d_counts["hospitals"],
+            "companies": d_counts["companies"],
+            "it_companies": d_counts["it_companies"],
+            "total": d_counts["total"]
         })
 
     return result

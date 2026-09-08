@@ -135,8 +135,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/admin", label: "Admin Dashboard", icon: ShieldCheck },
     { href: "/admin/campaigns", label: "Discovery Campaigns", icon: Sparkles },
     { href: "/admin/users", label: "Users", icon: Users },
-    { href: "/admin/tasks", label: "Admin Tasks", icon: ListFilter },
-    { href: "/admin/logs", label: "Scraping Logs", icon: FileText }
+    { href: "/admin/tasks", label: "Admin Tasks", icon: ListFilter }
   ];
 
   const isAuthPage = pathname === "/login" || pathname === "/register";
