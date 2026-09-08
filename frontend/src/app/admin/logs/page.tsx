@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { FileText, Search, Loader2 } from "lucide-react";
+import { FileText, Search } from "lucide-react";
 import { api, ScrapingLog } from "@/lib/api";
 
 export default function AdminLogsPage() {
@@ -113,16 +113,15 @@ export default function AdminLogsPage() {
                   </tr>
                 ))
               )}
-                {logs.length === 0 && !loading && (
-                  <tr>
-                    <td colSpan={4} className="text-center py-8 text-xs text-gray-400 font-sans">
-                      No scraping logs match the specified criteria.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              {logs.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={4} className="text-center py-8 text-xs text-gray-400 font-sans">
+                    No scraping logs match the specified criteria.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

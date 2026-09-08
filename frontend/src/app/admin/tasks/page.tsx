@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { ListFilter, Loader2, ExternalLink } from "lucide-react";
+import { ListFilter, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
 
 export default function AdminTasksPage() {
@@ -28,7 +28,7 @@ export default function AdminTasksPage() {
 
   const filteredTasks = tasks.filter((t) => {
     const query = search.toLowerCase();
-    const matchesSearch = 
+    const matchesSearch =
       (t.user_email || "").toLowerCase().includes(query) ||
       (t.keyword || "").toLowerCase().includes(query) ||
       (t.location || "").toLowerCase().includes(query) ||
@@ -37,6 +37,53 @@ export default function AdminTasksPage() {
     return matchesSearch && matchesStatus;
   });
 
+  return (
+    <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <ListFilter className="h-6 w-6 text-orange-500" /> Admin Tasks Directory
+          </h1>
+          <p className="text-sm text-gray-500">Monitor all search & scraping tasks across all system users.</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="text"
+            placeholder="Search tasks, users, keywords..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-xl text-xs font-semibold focus:outline-none focus:border-orange-500 w-64"
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-xl text-xs font-semibold focus:outline-none focus:border-orange-500"
+          >
+            <option value="ALL">All Statuses</option>
+            <option value="COMPLETED">Completed</option>
+            <option value="RUNNING">Running</option>
+            <option value="FAILED">Failed</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-3.5">Task ID</th>
+                <th className="px-6 py-3.5">User</th>
+                <th className="px-6 py-3.5">Target</th>
+                <th className="px-6 py-3.5">Status</th>
+                <th className="px-6 py-3.5">Discovered</th>
+                <th className="px-6 py-3.5">Crawled</th>
+                <th className="px-6 py-3.5">Leads</th>
+                <th className="px-6 py-3.5">Created</th>
+                <th className="px-6 py-3.5 text-right">Actions</th>
+              </tr>
+            </thead>
             <tbody className="divide-y divide-gray-100">
               {loading && filteredTasks.length === 0 ? (
                 [...Array(4)].map((_, i) => (
@@ -54,38 +101,39 @@ export default function AdminTasksPage() {
                 ))
               ) : (
                 filteredTasks.map((t) => (
-                <tr key={t.id} className="hover:bg-gray-50/80 transition-colors">
-                  <td className="px-6 py-4 font-mono text-xs font-bold text-gray-900">{t.public_task_id}</td>
-                  <td className="px-6 py-4 font-medium text-gray-800">{t.user_email}</td>
-                  <td className="px-6 py-4">
-                    <span className="font-semibold text-gray-900">{t.keyword}</span>
-                    <span className="text-xs text-gray-400 block">{t.location}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                      t.status === "COMPLETED" ? "bg-emerald-100 text-emerald-800" :
-                      t.status === "RUNNING" ? "bg-amber-100 text-amber-800 animate-pulse" :
-                      t.status === "FAILED" ? "bg-red-100 text-red-800" : "bg-gray-100 text-gray-800"
-                    }`}>
-                      {t.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 font-semibold text-gray-800">{t.discovered_count}</td>
-                  <td className="px-6 py-4 font-semibold text-gray-800">{t.websites_crawled}</td>
-                  <td className="px-6 py-4 font-bold text-orange-600">{t.lead_count}</td>
-                  <td className="px-6 py-4 text-xs text-gray-500">
-                    {new Date(t.created_at).toLocaleDateString()} {new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <Link
-                      href={`/tasks/${t.public_task_id}`}
-                      className="p-2 text-gray-400 hover:text-orange-600 inline-block"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+                  <tr key={t.id} className="hover:bg-gray-50/80 transition-colors">
+                    <td className="px-6 py-4 font-mono text-xs font-bold text-gray-900">{t.public_task_id}</td>
+                    <td className="px-6 py-4 font-medium text-gray-800">{t.user_email}</td>
+                    <td className="px-6 py-4">
+                      <span className="font-semibold text-gray-900">{t.keyword}</span>
+                      <span className="text-xs text-gray-400 block">{t.location}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                        t.status === "COMPLETED" ? "bg-emerald-100 text-emerald-800" :
+                        t.status === "RUNNING" ? "bg-amber-100 text-amber-800 animate-pulse" :
+                        t.status === "FAILED" ? "bg-red-100 text-red-800" : "bg-gray-100 text-gray-800"
+                      }`}>
+                        {t.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-gray-800">{t.discovered_count}</td>
+                    <td className="px-6 py-4 font-semibold text-gray-800">{t.websites_crawled}</td>
+                    <td className="px-6 py-4 font-bold text-orange-600">{t.lead_count}</td>
+                    <td className="px-6 py-4 text-xs text-gray-500">
+                      {new Date(t.created_at).toLocaleDateString()} {new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <Link
+                        href={`/tasks/${t.public_task_id}`}
+                        className="p-2 text-gray-400 hover:text-orange-600 inline-block"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Link>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

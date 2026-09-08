@@ -255,17 +255,18 @@ class ApiClient {
     return response.json();
   }
 
-  // AUTH API
-  async login(email: string, password: string): Promise<{ access_token: string }> {
+  async login(email: string, password: string): Promise<{ access_token: string; token_type: string; user?: User }> {
     const res = await this.request("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password })
     });
-    this.setToken(res.access_token);
-    try {
-      const user = await this.getMe();
-      this.setCachedUser(user);
-    } catch {}
+    if (res.access_token) {
+      this.setToken(res.access_token);
+    }
+    if (res.user) {
+      this.setCachedUser(res.user);
+      this.memoryCache.set("/api/auth/me", { data: res.user, timestamp: Date.now() });
+    }
     return res;
   }
 

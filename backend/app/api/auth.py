@@ -125,12 +125,14 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=Token)
 def login_json(user_data: UserLogin, db: Session = Depends(get_db)):
-    seed_default_users(db)
     clean_email = user_data.email.strip().lower()
-    user = db.query(User).filter(User.email == clean_email).first()
+    user = db.query(User).filter(func.lower(User.email) == clean_email).first()
     if not user:
-        user = db.query(User).filter(func.lower(User.email) == clean_email).first()
-    if not user:
+        if db.query(User).count() == 0:
+            seed_default_users(db)
+            user = db.query(User).filter(func.lower(User.email) == clean_email).first()
+            
+    if not user or not verify_password(user_data.password, user.hashed_password):
         raise HTTPException(
             status_code=400,
             detail="Incorrect email or password."
@@ -140,22 +142,19 @@ def login_json(user_data: UserLogin, db: Session = Depends(get_db)):
             status_code=403,
             detail="Your account has been suspended."
         )
-    if not verify_password(user_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=400,
-            detail="Incorrect email or password."
-        )
     access_token = create_access_token(data={"sub": user.email, "role": user.role})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer", "user": user}
 
 @router.post("/login-form", response_model=Token)
 def login_form(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    seed_default_users(db)
     clean_email = form_data.username.strip().lower()
-    user = db.query(User).filter(User.email == clean_email).first()
+    user = db.query(User).filter(func.lower(User.email) == clean_email).first()
     if not user:
-        user = db.query(User).filter(func.lower(User.email) == clean_email).first()
-    if not user:
+        if db.query(User).count() == 0:
+            seed_default_users(db)
+            user = db.query(User).filter(func.lower(User.email) == clean_email).first()
+
+    if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=400,
             detail="Incorrect email or password."
@@ -165,13 +164,8 @@ def login_form(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
             status_code=403,
             detail="Your account has been suspended."
         )
-    if not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=400,
-            detail="Incorrect email or password."
-        )
     access_token = create_access_token(data={"sub": user.email, "role": user.role})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer", "user": user}
 
 @router.get("/me", response_model=UserResponse)
 def read_users_me(current_user: User = Depends(get_current_user)):

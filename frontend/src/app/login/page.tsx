@@ -24,16 +24,12 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      await api.login(email, password);
+      const res = await api.login(email, password);
       showToast("Successfully logged in. Welcome!", "success");
-      const me = await api.getMe();
-      if (me?.role === "ADMIN") {
-        router.push("/admin");
-      } else {
-        router.push("/");
-      }
+      const userRole = res.user?.role || api.getCachedUser()?.role || "USER";
+      router.push(userRole === "ADMIN" ? "/admin" : "/");
     } catch (err: any) {
-      showToast(err.message || "Invalid email or password.", "error");
+      showToast(err.message || "Incorrect email or password.", "error");
     } finally {
       setLoading(false);
     }
@@ -91,29 +87,6 @@ export default function LoginPage() {
           {!loading && <ArrowRight className="h-4 w-4" />}
         </button>
       </form>
-
-      {/* DEMO CREDENTIAL CHIPS */}
-      <div className="mt-6 pt-5 border-t border-gray-100 space-y-2">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Quick Demo Credentials</p>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => { setEmail("admin@leaddiscovery.com"); setPassword("admin123"); }}
-            className="flex flex-col items-start p-2.5 rounded-xl bg-orange-50/60 hover:bg-orange-100/80 border border-orange-200 text-left transition-all group"
-          >
-            <span className="text-[10px] font-extrabold text-orange-700 uppercase tracking-wider">Demo Admin</span>
-            <span className="text-xs font-semibold text-gray-800 truncate w-full">admin@leaddiscovery.com</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => { setEmail("user@leaddiscovery.com"); setPassword("user123"); }}
-            className="flex flex-col items-start p-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 text-left transition-all group"
-          >
-            <span className="text-[10px] font-extrabold text-gray-600 uppercase tracking-wider">Demo User</span>
-            <span className="text-xs font-semibold text-gray-800 truncate w-full">user@leaddiscovery.com</span>
-          </button>
-        </div>
-      </div>
 
       <div className="mt-6 text-center border-t border-gray-100 pt-5">
         <p className="text-xs text-gray-500">
