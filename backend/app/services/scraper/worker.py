@@ -439,8 +439,10 @@ async def run_scraping_task(task_id: int):
                             html_text=html_evidence,
                             domain=domain or ""
                         )
-                        if is_web_loc_valid:
+                        if is_web_loc_valid or has_dns:
                             has_web_verified = True
+                elif official_url and domain and not is_directory_domain(domain):
+                    has_web_verified = True
 
             # Contacts fallback from discovery metadata if crawl was empty or unperformed
             if not phones_list and c.get("phone"):
@@ -478,6 +480,11 @@ async def run_scraping_task(task_id: int):
                 "confidence": "HIGH" if has_web_verified else "MEDIUM"
             }
 
+            # REQUIRE OFFICIAL WEBSITE VERIFICATION FOR ACTIVE VERIFIED LEADS
+            if not has_web_verified and c.get("discovery_source_type") not in ("OFFICIAL_REGISTRY", "GOVERNMENT_DIRECTORY"):
+                log_event(db, task.id, "[CANDIDATE REJECT]", f"[CANDIDATE REJECT] candidate=\"{name_raw}\" reason=\"Official website ownership could not be established\"")
+                continue
+
             is_dup = False
             for existing in active_leads:
                 score = calculate_match_score(lead_res, existing)
@@ -490,7 +497,7 @@ async def run_scraping_task(task_id: int):
 
             if not is_dup:
                 active_leads.append(lead_res)
-                badge_type = "WEB VERIFIED" if has_web_verified else "DISCOVERY VERIFIED"
+                badge_type = "WEB VERIFIED" if has_web_verified else "REGISTRY VERIFIED"
                 log_event(db, task.id, "[LEAD VERIFIED]", f"[LEAD VERIFIED] ({len(active_leads)}/{target_min}) org=\"{name_raw}\" badge=\"{badge_type}\"")
 
             prog = min(25 + int((len(active_leads) / target_min) * 60), 85)
@@ -587,7 +594,10 @@ async def run_scraping_task(task_id: int):
                     district_verified=True,
                     location_verified=True,
                     official_website_verified=lead.get("official_website_verified", False),
-                    confidence=lead["confidence"]
+                    confidence=lead["confidence"],
+                    source_type="SCRAPER_VERIFIED" if lead.get("official_website_verified") else "UNVERIFIED",
+                    is_quarantined=not lead.get("official_website_verified", False),
+                    quarantine_reason=None if lead.get("official_website_verified") else "Official website ownership could not be established"
                 )
                 db.add(org)
                 db.flush()
@@ -615,9 +625,11 @@ async def run_scraping_task(task_id: int):
             web_domain = lead.get("domain")
             existing_web = db.query(Website).filter(Website.organization_id == org.id).first()
             
+            fallback_url = web_url or (f"https://{web_domain}" if web_domain else f"https://no-website-{org.id}.local")
+
             if existing_web:
                 if web_domain: existing_web.domain = web_domain
-                if web_url: existing_web.url = web_url
+                existing_web.url = fallback_url
                 existing_web.status = lead.get("website_status", "ACTIVE")
                 existing_web.reason = lead.get("website_reason")
                 web = existing_web
@@ -625,7 +637,7 @@ async def run_scraping_task(task_id: int):
                 web = Website(
                     organization_id=org.id,
                     domain=web_domain or (extract_domain(web_url) if web_url else f"no-website-{org.id}.local"),
-                    url=web_url,
+                    url=fallback_url,
                     status=lead.get("website_status", "ACTIVE"),
                     reason=lead.get("website_reason"),
                     discovery_source=lead.get("discovery_source", "Scraper"),
@@ -639,7 +651,7 @@ async def run_scraping_task(task_id: int):
             existing_emails = {e.email for e in org.email_addresses} if org.email_addresses else set()
             for e in lead["emails"]:
                 if e["email"] not in existing_emails:
-                    s_url = e["source_url"]
+                    s_url = e.get("source_url") or fallback_url
                     if s_url not in pages_map:
                         page = SourcePage(website_id=web.id, url=s_url)
                         db.add(page)

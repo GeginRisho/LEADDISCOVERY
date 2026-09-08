@@ -32,10 +32,11 @@ DIRECTORY_DOMAINS = {
     "cbse.gov.in", "saras.cbse.gov.in", "cbseit.in", "nic.in", "gov.in", "py.gov.in", "tn.gov.in", "kanniyakumari.nic.in",
     "cbseboard.org", "results.cbseboard.org", "cbseboard.in", "cbse.nic.in", "icbse.com", "cbseresults.nic.in",
     "tnresults.nic.in", "dge.tn.gov.in", "results.gov.in",
-    # Social Platforms & Forums
+    # Social Platforms, Technical Vendors & Forums
     "facebook.com", "instagram.com", "linkedin.com", "twitter.com", "x.com", "pinterest.com", "tumblr.com",
     "reddit.com", "crunchbase.com", "glassdoor.com", "indeed.com", "medium.com", "wordpress.com", "blogspot.com",
-    "scribd.com", "substack.com", "quora.com", "youtube.com"
+    "scribd.com", "substack.com", "quora.com", "youtube.com", "microsoft.com", "apple.com", "weforum.org", "zhihu.com",
+    "amazon.com", "amazon.in"
 }
 
 CATEGORY_PATH_PATTERNS = [
@@ -163,12 +164,12 @@ def normalize_category_and_subcategory(category_str: str) -> Tuple[str, str]:
 def verify_category_match(requested_category: str, candidate_name: str, candidate_category: str = "", candidate_url: str = "") -> Tuple[bool, str]:
     """
     Dynamically verifies whether candidate matches the user-requested organization category.
-    Enforces strict subcategory matching (e.g. CBSE school vs generic matriculation school).
+    Enforces strict category indicator matching and rejects cross-category conflicts.
     """
     req_low = requested_category.lower().strip()
     cand_low = candidate_name.lower().strip()
     url_low = (candidate_url or "").lower().strip()
-    combined = f"{cand_low} {url_low}"
+    combined = f"{cand_low} {url_low} {(candidate_category or '').lower()}"
 
     req_cat, req_subcat = normalize_category_and_subcategory(requested_category)
 
@@ -179,24 +180,41 @@ def verify_category_match(requested_category: str, candidate_name: str, candidat
         if req_subcat == "CBSE":
             if any(bad in cand_low for bad in ["cbse result", "cbse exam", "cbse board", "cbse syllabus", "sample paper", "date sheet", "admit card"]):
                 return False, "CATEGORY_MISMATCH (Exam/Board result page)"
-            # Must have school indicator
-            if not any(good in cand_low for good in ["school", "vidyalaya", "academy", "convent", "gurukul", "public school", "high school", "cbse"]):
+            if not any(good in combined for good in ["school", "vidyalaya", "academy", "convent", "gurukul", "public school", "high school", "cbse"]):
                 return False, f"CATEGORY_MISMATCH (Candidate '{candidate_name}' does not indicate a school entity)"
-            # Generic non-CBSE school check: matriculation without cbse evidence is rejected for CBSE search
             if "matriculation" in cand_low and "cbse" not in combined:
                 return False, f"CATEGORY_MISMATCH (Candidate '{candidate_name}' is a Matriculation school, not a CBSE school)"
+        else:
+            if not any(good in combined for good in ["school", "vidyalaya", "academy", "convent", "gurukul", "public school", "high school", "matriculation"]):
+                return False, f"CATEGORY_MISMATCH (Candidate '{candidate_name}' does not indicate a school entity)"
 
     elif req_cat == "HOTEL":
-        if any(conf in cand_low for conf in ["school", "college", "university", "hospital"]):
+        if any(conf in cand_low for conf in ["school", "college", "university", "hospital", "software", "technologies", "electron"]):
             return False, f"CATEGORY_MISMATCH (Candidate conflicts with hotel category)"
+        if not any(good in combined for good in ["hotel", "resort", "inn", "lodge", "lodging", "suites", "residency", "palace", "grand", "stay", "guest house", "homestay", "villa", "cottage", "spa", "hospitality"]):
+            return False, f"CATEGORY_MISMATCH (Candidate '{candidate_name}' does not indicate a hotel/lodging entity)"
 
     elif req_cat == "HOSPITAL":
         if any(conf in cand_low for conf in ["school", "college", "university", "hotel", "resort"]):
             return False, f"CATEGORY_MISMATCH (Candidate conflicts with hospital category)"
+        if not any(good in combined for good in ["hospital", "clinic", "healthcare", "medical", "nursing home", "health center", "care", "eye center"]):
+            return False, f"CATEGORY_MISMATCH (Candidate '{candidate_name}' does not indicate a hospital/healthcare entity)"
 
     elif req_cat == "COLLEGE":
-        if any(conf in cand_low for conf in ["hospital", "hotel", "resort"]):
+        if any(conf in cand_low for conf in ["hospital", "hotel", "resort", "school"]):
             return False, f"CATEGORY_MISMATCH (Candidate conflicts with college category)"
+        if not any(good in combined for good in ["college", "university", "institute", "institution", "campus", "polytechnic", "vidyapeeth"]):
+            return False, f"CATEGORY_MISMATCH (Candidate '{candidate_name}' does not indicate a higher education college/university)"
+
+    elif req_cat == "SOFTWARE_COMPANY":
+        if any(conf in cand_low for conf in ["school", "college", "university", "hotel", "resort", "hospital"]):
+            return False, f"CATEGORY_MISMATCH (Candidate conflicts with software/IT company category)"
+        if not any(good in combined for good in ["software", "tech", "technologies", "it ", "it-", "solutions", "infotech", "systems", "digital", "labs", "data", "cyber", "cloud", "ai", "consulting"]):
+            return False, f"CATEGORY_MISMATCH (Candidate '{candidate_name}' does not indicate an IT/software company)"
+
+    elif req_cat == "COMPANY":
+        if any(conf in cand_low for conf in ["school", "college", "university", "hotel", "resort", "hospital"]):
+            return False, f"CATEGORY_MISMATCH (Candidate conflicts with company category)"
 
     return True, "PASS"
 

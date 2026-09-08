@@ -251,6 +251,24 @@ def resume_campaign(
     background_tasks.add_task(run_discovery_campaign, campaign.id)
     return {"message": f"Resuming campaign '{campaign.name}' (ID: {campaign.id}). Remaining items will be processed."}
 
+CONFIGURED_CATEGORIES = [
+    "Colleges & Universities",
+    "Schools",
+    "Hotels",
+    "Hospitals",
+    "Companies",
+    "IT Companies"
+]
+
+def resolve_categories(payload: dict) -> List[str]:
+    cats = payload.get("categories")
+    if isinstance(cats, list) and cats:
+        return [str(c).strip() for c in cats if str(c).strip()]
+    single_cat = payload.get("category")
+    if single_cat:
+        return [str(single_cat).strip()]
+    return CONFIGURED_CATEGORIES
+
 @router.post("/run-all-tn")
 def run_all_tamil_nadu(
     payload: dict,
@@ -258,37 +276,39 @@ def run_all_tamil_nadu(
     db: Session = Depends(get_db),
     admin_user: User = Depends(get_current_admin_user)
 ):
-    category = (payload.get("category") or "Colleges").strip()
+    categories = resolve_categories(payload)
     max_results = payload.get("max_results_per_region", 15)
     max_pages = payload.get("max_pages_per_site", 5)
 
     regions = [d["name"] for d in TAMIL_NADU_DISTRICTS]
+    total_items = len(regions) * len(categories)
     
     cmp = DiscoveryCampaign(
-        name=f"Tamil Nadu {category} Campaign",
+        name=f"Tamil Nadu Campaign ({', '.join(categories[:2])}{'...' if len(categories)>2 else ''})",
         region_scope="TAMIL_NADU",
-        category=category,
+        category=", ".join(categories),
         max_results_per_region=max_results,
         max_pages_per_site=max_pages,
         status="PENDING",
-        total_regions=len(regions)
+        total_regions=total_items
     )
     db.add(cmp)
     db.commit()
     db.refresh(cmp)
 
     for reg_name in regions:
-        item = CampaignItem(
-            campaign_id=cmp.id,
-            region_name=reg_name,
-            category=category,
-            status="PENDING"
-        )
-        db.add(item)
+        for cat in categories:
+            item = CampaignItem(
+                campaign_id=cmp.id,
+                region_name=reg_name,
+                category=cat,
+                status="PENDING"
+            )
+            db.add(item)
     db.commit()
 
     background_tasks.add_task(run_discovery_campaign, cmp.id)
-    return {"message": f"Started Tamil Nadu {category} Campaign across all {len(regions)} districts.", "campaign_id": cmp.id}
+    return {"message": f"Started Tamil Nadu Campaign across {len(regions)} districts ({total_items} task units).", "campaign_id": cmp.id}
 
 @router.post("/run-puducherry")
 def run_puducherry(
@@ -297,34 +317,35 @@ def run_puducherry(
     db: Session = Depends(get_db),
     admin_user: User = Depends(get_current_admin_user)
 ):
-    category = (payload.get("category") or "Colleges").strip()
+    categories = resolve_categories(payload)
     max_results = payload.get("max_results_per_region", 15)
     max_pages = payload.get("max_pages_per_site", 5)
 
     cmp = DiscoveryCampaign(
-        name=f"Puducherry {category} Campaign",
+        name=f"Puducherry UT Campaign ({', '.join(categories[:2])}{'...' if len(categories)>2 else ''})",
         region_scope="PUDUCHERRY",
-        category=category,
+        category=", ".join(categories),
         max_results_per_region=max_results,
         max_pages_per_site=max_pages,
         status="PENDING",
-        total_regions=1
+        total_regions=len(categories)
     )
     db.add(cmp)
     db.commit()
     db.refresh(cmp)
 
-    item = CampaignItem(
-        campaign_id=cmp.id,
-        region_name="Puducherry",
-        category=category,
-        status="PENDING"
-    )
-    db.add(item)
+    for cat in categories:
+        item = CampaignItem(
+            campaign_id=cmp.id,
+            region_name="Puducherry",
+            category=cat,
+            status="PENDING"
+        )
+        db.add(item)
     db.commit()
 
     background_tasks.add_task(run_discovery_campaign, cmp.id)
-    return {"message": f"Started Puducherry {category} Campaign.", "campaign_id": cmp.id}
+    return {"message": f"Started Puducherry UT Campaign ({len(categories)} categories).", "campaign_id": cmp.id}
 
 @router.post("/run-all")
 def run_all_regions(
@@ -333,35 +354,37 @@ def run_all_regions(
     db: Session = Depends(get_db),
     admin_user: User = Depends(get_current_admin_user)
 ):
-    category = (payload.get("category") or "Colleges").strip()
+    categories = resolve_categories(payload)
     max_results = payload.get("max_results_per_region", 15)
     max_pages = payload.get("max_pages_per_site", 5)
 
     regions = [d["name"] for d in ALL_REGIONS]
+    total_items = len(regions) * len(categories)
 
     cmp = DiscoveryCampaign(
-        name=f"All Regions (TN + PY) {category} Campaign",
+        name=f"All Regions Campaign (38 TN + Puducherry UT)",
         region_scope="ALL",
-        category=category,
+        category=", ".join(categories),
         max_results_per_region=max_results,
         max_pages_per_site=max_pages,
         status="PENDING",
-        total_regions=len(regions)
+        total_regions=total_items
     )
     db.add(cmp)
     db.commit()
     db.refresh(cmp)
 
     for reg_name in regions:
-        item = CampaignItem(
-            campaign_id=cmp.id,
-            region_name=reg_name,
-            category=category,
-            status="PENDING"
-        )
-        db.add(item)
+        for cat in categories:
+            item = CampaignItem(
+                campaign_id=cmp.id,
+                region_name=reg_name,
+                category=cat,
+                status="PENDING"
+            )
+            db.add(item)
     db.commit()
 
     background_tasks.add_task(run_discovery_campaign, cmp.id)
-    return {"message": f"Started Regional Campaign across all {len(regions)} regions (38 TN + Puducherry).", "campaign_id": cmp.id}
+    return {"message": f"Started Master Regional Campaign across all {len(regions)} regions ({total_items} task units).", "campaign_id": cmp.id}
 

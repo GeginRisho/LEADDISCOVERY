@@ -48,9 +48,12 @@ ENCYCLOPEDIA_TITLE_PATTERNS = [
 
 # Title & Content patterns indicating a Directory, Aggregator, Ranking, or Listing
 LISTING_TITLE_PATTERNS = [
-    r'list of\b', r'top \d+\b', r'\d+ best\b', r'best \w+ in', r'directory of',
+    r'list of\b', r'\b\d+\s*top\b', r'\b\d+\s*best\b', r'best \w+ in', r'directory of',
     r'ranking of', r'compare ', r'reviews of', r'yellow pages', r'find \w+ near',
-    r'search results', r'listings in', r'popular \w+ in'
+    r'search results', r'listings in', r'popular \w+ in',
+    r'^\s*(hotels|schools|colleges|hospitals|companies|it companies)\s+in\b',
+    r'\b(book with|booking\.com|tripadvisor|expedia|agoda|make my trip|goibibo|trivago|justdial|sulekha|yatra)\b',
+    r'\b(with prices|best budget|places to stay|hotels from|rooms from|stays in)\b'
 ]
 
 # Title & Content patterns indicating Exam Results, Syllabus, Board portals & Admission articles
@@ -103,11 +106,21 @@ def verify_organization_identity(
         "signals_evaluated": []
     }
 
-    if not name or len(name.strip()) < 3:
+    clean_alpha = re.sub(r'[^a-zA-Z0-9]', '', name)
+    if not name or len(clean_alpha) < 3:
         metadata["rejection_reason"] = REJECTION_NOT_AN_ORGANIZATION
         return False, REJECTION_NOT_AN_ORGANIZATION, metadata
 
     name_lower = name.lower().strip()
+    generic_nav_titles = {
+        "company info", "products and services", "home", "contact us", "about us",
+        "privacy policy", "terms of use", "disclaimer", "sitemap", "careers",
+        "login", "sign in", "register", "search", "faq", "help"
+    }
+    if name_lower in generic_nav_titles or name_lower.startswith("careers at "):
+        metadata["rejection_reason"] = REJECTION_NOT_AN_ORGANIZATION
+        return False, REJECTION_NOT_AN_ORGANIZATION, metadata
+
     url_lower = (url or "").lower().strip()
     snippet_lower = (snippet or "").lower().strip()
     combined_text = f"{name_lower} {snippet_lower} {html_text[:1000].lower()}"

@@ -20,8 +20,8 @@ def is_generic_listing_title(name: str, url: str = "") -> bool:
     is_gen, _ = is_generic_listing_page(name, url)
     return is_gen
 
-def generate_multi_queries(category: str, location: str) -> List[str]:
-    cat = category.strip()
+def generate_multi_queries(keyword: str, location: str) -> List[str]:
+    cat = keyword.strip()
     loc = location.strip()
     cat_plural = cat if cat.endswith("s") else f"{cat}s"
     cat_lower = cat.lower()
@@ -101,7 +101,10 @@ def unwrap_bing_url(url: str, cite_text: str = "") -> str:
                 b64_str = u_val[2:]
                 # Add padding if needed
                 padded = b64_str + "=" * (-len(b64_str) % 4)
-                decoded = base64.b64decode(padded).decode("utf-8", errors="ignore")
+                try:
+                    decoded = base64.urlsafe_b64decode(padded).decode("utf-8", errors="ignore")
+                except Exception:
+                    decoded = base64.b64decode(padded).decode("utf-8", errors="ignore")
                 if decoded.startswith("http://") or decoded.startswith("https://"):
                     return decoded
     except Exception:
@@ -380,7 +383,7 @@ class DuckDuckGoHTMLProvider(DiscoveryProvider):
         }
 
     async def discover(self, location: str, keyword: str, max_results: int = 100, client: Optional[httpx.AsyncClient] = None) -> List[Dict[str, Any]]:
-        queries = generate_multi_queries(location, keyword)
+        queries = generate_multi_queries(keyword, location)
         candidates: List[Dict[str, Any]] = []
         seen_names: set = set()
         seen_urls: set = set()
@@ -472,7 +475,7 @@ class BingHTMLProvider(DiscoveryProvider):
         }
 
     async def discover(self, location: str, keyword: str, max_results: int = 100, client: Optional[httpx.AsyncClient] = None) -> List[Dict[str, Any]]:
-        queries = generate_multi_queries(location, keyword)
+        queries = generate_multi_queries(keyword, location)
         candidates: List[Dict[str, Any]] = []
         seen_names: set = set()
         seen_urls: set = set()
