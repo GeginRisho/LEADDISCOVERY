@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, case
 from typing import List, Optional
 import datetime
 
@@ -65,6 +65,35 @@ def get_admin_overview(
         "total_emails": int(total_emails),
         "total_phones": int(total_phones),
         "total_socials": int(total_socials)
+    }
+
+@router.get("/data-diagnostics")
+def get_data_diagnostics(
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(get_current_admin_user)
+):
+    from app.core.database import engine
+    url = engine.url
+    return {
+        "database": {
+            "driver": url.drivername,
+            "host": url.host or "localhost",
+            "database_name": url.database,
+            "user": url.username
+        },
+        "counts": {
+            "users": db.query(func.count(User.id)).scalar() or 0,
+            "admins": db.query(func.count(User.id)).filter(User.role == "ADMIN").scalar() or 0,
+            "normal_users": db.query(func.count(User.id)).filter(User.role == "USER").scalar() or 0,
+            "active_users": db.query(func.count(User.id)).filter(User.status == "ACTIVE").scalar() or 0,
+            "tasks": db.query(func.count(ScrapingTask.id)).scalar() or 0,
+            "organizations": db.query(func.count(Organization.id)).scalar() or 0,
+            "task_leads": db.query(func.count(TaskLead.id)).scalar() or 0,
+            "websites": db.query(func.count(Website.id)).scalar() or 0,
+            "phones": db.query(func.count(PhoneNumber.id)).scalar() or 0,
+            "emails": db.query(func.count(EmailAddress.id)).scalar() or 0,
+            "social_links": db.query(func.count(SocialLink.id)).scalar() or 0
+        }
     }
 
 @router.get("/users")

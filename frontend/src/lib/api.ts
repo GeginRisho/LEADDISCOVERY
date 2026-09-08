@@ -1,5 +1,5 @@
 const getApiBase = (): string => {
-  const url = process.env.NEXT_PUBLIC_API_URL || "https://leaddiscovery.onrender.com";
+  const url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
   return url.replace(/\/+$/, "");
 };
 const API_BASE = getApiBase();
