@@ -4,6 +4,7 @@ from sqlalchemy import or_, and_, func, case
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import io
+import datetime
 from app.core.database import get_db
 from app.models.models import ScrapingTask, Organization, ScrapingLog
 from app.schemas.tasks import ScrapingTaskCreate, ScrapingTaskResponse, ScrapingLogResponse
@@ -182,8 +183,7 @@ def get_initial_verified_organizations(
     ).order_by(
         Organization.admin_verified.desc(),
         Organization.confidence.desc(),
-        Organization.updated_at.desc(),
-        Organization.id.asc()
+        Organization.id.desc()
     ).limit(limit)
 
     return query.all()

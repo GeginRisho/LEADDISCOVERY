@@ -96,9 +96,8 @@ def fast_search_verified_index(
     organizations = query.order_by(
         Organization.admin_verified.desc(),
         Organization.confidence.desc(),
-        Organization.updated_at.desc(),
-        Organization.id.asc()
-    ).limit(limit * 2).all()
+        Organization.id.desc()
+    ).limit(limit * 3).all()
 
     database_query_finished = time.time()
     db_execution_ms = round((database_query_finished - database_query_started) * 1000, 2)
