@@ -57,6 +57,137 @@ def is_lead_qualified(lead: Organization, required_fields: Optional[List[str]]) 
     return True
 
 
+def get_initial_verified_organizations(
+    db: Session,
+    keyword: str,
+    location: str,
+    limit: int = 15
+) -> List[Organization]:
+    from app.services.location_service import normalize_target_location
+    from app.services.scraper.identification import normalize_category_and_subcategory
+    from sqlalchemy import func, or_, and_
+    from sqlalchemy.orm import joinedload
+
+    if not keyword or not location:
+        return []
+
+    kw_clean = keyword.strip().lower()
+    norm_cat, norm_subcat = normalize_category_and_subcategory(keyword)
+    target_loc = normalize_target_location(location)
+
+    # 1. CATEGORY MATCHING (Synonyms, Plurals & Subcategories)
+    cat_terms = set()
+    kw_words = [w.strip() for w in kw_clean.replace("&", " ").split() if len(w.strip()) > 2]
+    for w in kw_words:
+        if w.endswith("s") and len(w) > 3:
+            cat_terms.add(w[:-1])
+        cat_terms.add(w)
+
+    cat_terms.add(kw_clean)
+    if norm_cat:
+        cat_terms.add(norm_cat.lower())
+        if norm_cat.lower().endswith("s") and len(norm_cat) > 3:
+            cat_terms.add(norm_cat.lower()[:-1])
+    if norm_subcat:
+        cat_terms.add(norm_subcat.lower())
+
+    if "hotel" in kw_clean:
+        cat_terms.update(["hotel", "resort", "lodging", "accommodation", "hospitality"])
+    elif "school" in kw_clean:
+        cat_terms.update(["school", "cbse", "matriculation", "academy"])
+    elif "college" in kw_clean:
+        cat_terms.update(["college", "university", "institution"])
+    elif "hospital" in kw_clean:
+        cat_terms.update(["hospital", "clinic", "medical", "healthcare"])
+    elif "company" in kw_clean or "software" in kw_clean or "it" in kw_clean:
+        cat_terms.update(["company", "software", "tech", "it"])
+
+    cat_clauses = []
+    for term in cat_terms:
+        if not term:
+            continue
+        cat_clauses.append(func.lower(Organization.category) == term)
+        cat_clauses.append(func.lower(Organization.category).like(f"%{term}%"))
+        cat_clauses.append(func.lower(Organization.sub_category) == term)
+        cat_clauses.append(func.lower(Organization.sub_category).like(f"%{term}%"))
+
+    # 2. LOCATION MATCHING (Strict District & Regional Protection)
+    target_dist = target_loc.get("target_district", "").lower()
+    target_state = target_loc.get("target_state_or_ut", "").lower()
+    valid_cities = [c.lower() for c in target_loc.get("valid_cities_in_district", set())]
+
+    dist_synonyms = [target_dist] if target_dist else []
+    if target_dist in ("puducherry", "pondicherry") or target_state in ("puducherry ut", "puducherry"):
+        dist_synonyms = ["puducherry", "pondicherry", "puducherry ut"]
+
+    city_list = list(set(valid_cities + dist_synonyms))
+
+    loc_clauses = []
+    if target_loc.get("target_country"):
+        loc_clauses.append(func.lower(Organization.country) == target_loc["target_country"].lower())
+
+    if city_list:
+        sub_locs = [
+            func.lower(Organization.district).in_(dist_synonyms),
+            func.lower(Organization.city).in_(city_list),
+            func.lower(Organization.state).in_(dist_synonyms)
+        ]
+        for c in dist_synonyms:
+            if len(c) >= 4:
+                sub_locs.append(func.lower(Organization.address).like(f"%{c}%"))
+        loc_clauses.append(or_(*sub_locs))
+    elif target_state:
+        loc_clauses.append(or_(
+            func.lower(Organization.state) == target_state,
+            func.lower(Organization.district) == target_state
+        ))
+
+    # 3. VERIFIED ELIGIBILITY & NOT QUARANTINED
+    scraper_verified_clause = and_(
+        Organization.identity_verified == True,
+        Organization.category_verified == True,
+        Organization.country_verified == True,
+        Organization.state_verified == True,
+        Organization.district_verified == True,
+        Organization.location_verified == True,
+        Organization.official_website_verified == True
+    )
+
+    verified_clause = or_(
+        Organization.admin_verified == True,
+        Organization.source_type == "ADMIN_VERIFIED",
+        Organization.verification_method == "ADMIN",
+        scraper_verified_clause,
+        and_(
+            Organization.confidence.in_(["HIGH", "MEDIUM"]),
+            Organization.official_website_verified == True
+        )
+    )
+
+    not_quarantined_clause = or_(
+        Organization.is_quarantined == False,
+        Organization.is_quarantined.is_(None)
+    )
+
+    query = db.query(Organization).filter(
+        or_(*cat_clauses),
+        and_(*loc_clauses),
+        verified_clause,
+        not_quarantined_clause
+    ).options(
+        joinedload(Organization.website),
+        joinedload(Organization.phone_numbers),
+        joinedload(Organization.email_addresses),
+        joinedload(Organization.social_links)
+    ).order_by(
+        Organization.admin_verified.desc(),
+        Organization.confidence.desc(),
+        Organization.updated_at.desc(),
+        Organization.id.asc()
+    ).limit(limit)
+
+    return query.all()
+
 @router.post("", response_model=ScrapingTaskResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/scrape", response_model=ScrapingTaskResponse, status_code=status.HTTP_201_CREATED)
 def create_task(
@@ -93,53 +224,10 @@ def create_task(
     log_event(db, task.id, "TASK_CREATED", f"Scraping task initialized with ID: {task.public_task_id} by user: {current_user.email}")
 
     # 3. FAST READ PATH: Query Master Organizations verified index immediately
-    from app.services.location_service import normalize_target_location
-    from app.services.scraper.identification import normalize_category_and_subcategory
     from app.models.models import TaskLead
 
-    norm_cat, norm_subcat = normalize_category_and_subcategory(payload.keyword)
-    target_loc = normalize_target_location(payload.location)
     target_min = min(15, payload.max_results) if payload.max_results >= 15 else payload.max_results
-
-    scraper_verified_clause = and_(
-        Organization.identity_verified == True,
-        Organization.category_verified == True,
-        Organization.country_verified == True,
-        Organization.state_verified == True,
-        Organization.district_verified == True,
-        Organization.location_verified == True,
-        Organization.official_website_verified == True
-    )
-
-    from sqlalchemy import func
-    cat_match = or_(
-        func.lower(Organization.category) == norm_cat.lower(),
-        func.lower(Organization.category) == payload.keyword.lower()
-    )
-
-    query = db.query(Organization).filter(
-        cat_match,
-        or_(Organization.admin_verified == True, scraper_verified_clause),
-        or_(Organization.is_quarantined == False, Organization.is_quarantined.is_(None))
-    )
-
-    if target_loc["target_district"]:
-        query = query.filter(func.lower(Organization.district) == target_loc["target_district"].lower())
-    elif target_loc["target_state_or_ut"]:
-        query = query.filter(func.lower(Organization.state) == target_loc["target_state_or_ut"].lower())
-
-    from sqlalchemy.orm import joinedload
-    pre_verified_orgs = query.options(
-        joinedload(Organization.website),
-        joinedload(Organization.phone_numbers),
-        joinedload(Organization.email_addresses),
-        joinedload(Organization.social_links)
-    ).order_by(
-        Organization.admin_verified.desc(),
-        Organization.confidence.desc(),
-        Organization.updated_at.desc(),
-        Organization.id.asc()
-    ).limit(target_min).all()
+    pre_verified_orgs = get_initial_verified_organizations(db, payload.keyword, payload.location, limit=target_min)
 
     # Create immediate TaskLead links safely
     existing_lead_org_ids = {tl.organization_id for tl in db.query(TaskLead.organization_id).filter(TaskLead.task_id == task.id).all()}
