@@ -36,18 +36,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   
-  const [user, setUser] = useState<UserType | null>(() => {
-    if (typeof window !== "undefined" && localStorage.getItem("token")) {
-      return api.getCachedUser();
-    }
-    return null;
-  });
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(() => {
-    if (typeof window !== "undefined" && localStorage.getItem("token")) {
-      return "authenticated";
-    }
-    return "loading";
-  });
+  const [user, setUser] = useState<UserType | null>(null);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
 

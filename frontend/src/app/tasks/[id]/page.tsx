@@ -16,8 +16,8 @@ export default function TaskDetailsPage() {
   const { showToast } = useToast();
   const taskId = params.id as string;
 
-  const [task, setTask] = useState<ScrapingTask | null>(() => api.getCachedTask(taskId));
-  const [leads, setLeads] = useState<Lead[]>(() => api.getCachedTaskLeads(taskId) || []);
+  const [task, setTask] = useState<ScrapingTask | null>(null);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
 
@@ -193,7 +193,7 @@ export default function TaskDetailsPage() {
     status: "RUNNING",
     progress: 10,
     error_info: null,
-    created_at: new Date().toISOString(),
+    created_at: null,
     started_at: null,
     completed_at: null
   } as any as ScrapingTask);
@@ -227,10 +227,17 @@ export default function TaskDetailsPage() {
             {displayTask.keyword} <span className="text-gray-400 font-normal">in</span> {displayTask.location}
           </h1>
           <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-xs text-gray-500 font-semibold">
-            <span className="flex items-center gap-1"><Calendar className="h-4 w-4 text-orange-500" /> Created: {new Date(displayTask.created_at).toLocaleString()}</span>
+            {displayTask.created_at ? (
+              <span className="flex items-center gap-1" suppressHydrationWarning>
+                <Calendar className="h-4 w-4 text-orange-500" /> Created: {new Date(displayTask.created_at).toLocaleString()}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1">
+                <Calendar className="h-4 w-4 text-orange-500" /> Created: Session Active
+              </span>
+            )}
             <span>Target: {Math.min(15, displayTask.max_results)} min</span>
             <span>Max Results: {displayTask.max_results}</span>
-            <span>Max Pages/Site: {displayTask.max_pages_per_site}</span>
           </div>
         </div>
 
