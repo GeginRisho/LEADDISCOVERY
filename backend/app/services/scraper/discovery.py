@@ -35,42 +35,70 @@ def generate_multi_queries(keyword: str, location: str) -> List[str]:
         loc_aliases = ["Kanyakumari", "Nagercoil"]
     elif loc_low in ("tiruchirappalli", "trichy"):
         loc_aliases = ["Tiruchirappalli", "Trichy"]
+    elif loc_low in ("thoothukudi", "tuticorin"):
+        loc_aliases = ["Thoothukudi", "Tuticorin"]
+    elif loc_low in ("tiruppur", "tirupur"):
+        loc_aliases = ["Tiruppur", "Tirupur"]
 
     queries = []
+    state_context = "Puducherry" if "puducherry" in loc_low or "pondicherry" in loc_low else "Tamil Nadu"
+
     for l in loc_aliases:
         queries.extend([
-            f"{cat_plural} in {l} India",
-            f"{cat} {l} official website",
-            f"{cat_plural} {l} contact phone email",
-            f"{cat} {l} address phone",
-            f"best {cat_plural} in {l}",
+            f"{cat_plural} in {l} {state_context}",
+            f"{l} {cat_plural} official website",
+            f"{l} {state_context} {cat} contact",
+            f"{cat_plural} near {l} official",
+            f"top {cat_plural} in {l}",
             f"list of {cat_plural} in {l}"
         ])
-        if "cbse" in cat_lower:
+
+        if "hotel" in cat_lower or "resort" in cat_lower or "lodging" in cat_lower:
             queries.extend([
+                f"hotels in {l} {state_context}",
+                f"{l} hotels official website",
+                f"{l} {state_context} hotel contact",
+                f"hotels near {l} official",
+                f"{l} resorts",
+                f"{l} hotel site:.in"
+            ])
+        elif "school" in cat_lower or "cbse" in cat_lower or "matriculation" in cat_lower:
+            queries.extend([
+                f"schools in {l} {state_context}",
+                f"schools {l} official website",
+                f"CBSE schools {l}",
+                f"matriculation schools {l}",
                 f"CBSE affiliated schools in {l}",
-                f"site:cbse.gov.in {l} school",
-                f"CBSE school {l} contact",
-                f"CBSE school {l} address"
+                f"site:cbse.gov.in {l} school"
             ])
-        elif "hospital" in cat_lower:
+        elif "college" in cat_lower or "university" in cat_lower or "higher education" in cat_lower:
             queries.extend([
-                f"hospitals in {l} contact number",
+                f"colleges in {l} {state_context}",
+                f"universities {l} official",
+                f"engineering colleges {l}",
+                f"arts science college in {l} official website"
+            ])
+        elif "it" in cat_lower or "software" in cat_lower or "tech" in cat_lower:
+            queries.extend([
+                f"IT companies in {l}",
+                f"software companies {l}",
+                f"technology companies {l} official",
+                f"IT tech companies in {l} {state_context}"
+            ])
+        elif "company" in cat_lower or "corporate" in cat_lower or "business" in cat_lower:
+            queries.extend([
+                f"companies in {l} {state_context}",
+                f"corporate offices in {l}",
+                f"businesses in {l} official",
+                f"top enterprises in {l}"
+            ])
+        elif "hospital" in cat_lower or "clinic" in cat_lower or "healthcare" in cat_lower:
+            queries.extend([
+                f"hospitals in {l} {state_context}",
                 f"multispeciality hospital in {l}",
+                f"clinics in {l}",
                 f"government hospital in {l}",
-                f"private hospital in {l}",
-                f"site:gov.in hospital {l}",
-                f"site:nic.in hospital {l}"
-            ])
-        elif "hotel" in cat_lower:
-            queries.extend([
-                f"hotels in {l} official website",
-                f"resorts in {l} contact"
-            ])
-        elif "software" in cat_lower or "it" in cat_lower:
-            queries.extend([
-                f"software companies in {l} contact",
-                f"IT company in {l} official site"
+                f"private hospital in {l}"
             ])
 
     # Deduplicate queries while preserving order

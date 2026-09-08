@@ -10,14 +10,23 @@ from app.core.security import get_password_hash, create_access_token
 
 client = TestClient(app)
 
+TEST_ORG_NAMES = [
+    "Test Hotel Puducherry",
+    "Hotel Chennai Admin",
+    "Hotel Puducherry Scraper",
+    "Target Hotel Puducherry",
+    "Puducherry Heritage Hotel",
+    "Puducherry High School",
+    "Fake Puducherry Hotel"
+]
+
 @pytest.fixture(autouse=True)
 def setup_database():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        db.query(Organization).delete()
-        db.query(ScrapingTask).delete()
-        db.query(User).delete()
+        db.query(Organization).filter(Organization.name.in_(TEST_ORG_NAMES)).delete(synchronize_session=False)
+        db.query(User).filter(User.email.in_(["admin_instant@leaddiscovery.com", "user_instant@leaddiscovery.com"])).delete(synchronize_session=False)
         db.commit()
 
         # Create admin user
@@ -35,6 +44,16 @@ def setup_database():
             status="ACTIVE"
         )
         db.add_all([admin, user])
+        db.commit()
+    finally:
+        db.close()
+
+    yield
+
+    db = SessionLocal()
+    try:
+        db.query(Organization).filter(Organization.name.in_(TEST_ORG_NAMES)).delete(synchronize_session=False)
+        db.query(User).filter(User.email.in_(["admin_instant@leaddiscovery.com", "user_instant@leaddiscovery.com"])).delete(synchronize_session=False)
         db.commit()
     finally:
         db.close()

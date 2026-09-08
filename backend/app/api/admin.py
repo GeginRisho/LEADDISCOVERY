@@ -7,7 +7,8 @@ import datetime
 from app.core.database import get_db
 from app.models.models import (
     User, ScrapingTask, Organization, Website, 
-    PhoneNumber, EmailAddress, SocialLink, ScrapingLog, District
+    PhoneNumber, EmailAddress, SocialLink, ScrapingLog, District,
+    TaskLead, OrgBranch
 )
 from app.schemas.auth import UserResponse
 from app.schemas.tasks import ScrapingTaskResponse, ScrapingLogResponse
@@ -556,15 +557,21 @@ def admin_create_organization(
     # Optional website model entry
     if web_url:
         domain_part = web_url.replace("https://", "").replace("http://", "").split("/")[0]
-        web = Website(
-            organization_id=org.id,
-            url=web_url,
-            domain=domain_part,
-            status="ACTIVE",
-            discovery_source="ADMIN_MANUAL",
-            confidence="HIGH"
-        )
-        db.add(web)
+        web = db.query(Website).filter(Website.organization_id == org.id).first()
+        if web:
+            web.url = web_url
+            web.domain = domain_part
+            web.status = "ACTIVE"
+        else:
+            web = Website(
+                organization_id=org.id,
+                url=web_url,
+                domain=domain_part,
+                status="ACTIVE",
+                discovery_source="ADMIN_MANUAL",
+                confidence="HIGH"
+            )
+            db.add(web)
 
     # Process Phones List
     phones_list = payload.get("phone_numbers") or []
@@ -754,6 +761,13 @@ def admin_delete_organization(
         raise HTTPException(status_code=404, detail="Organization not found.")
     
     org_name = org.name
+    # Explicitly remove child relationships
+    db.query(Website).filter(Website.organization_id == org_id).delete(synchronize_session=False)
+    db.query(PhoneNumber).filter(PhoneNumber.organization_id == org_id).delete(synchronize_session=False)
+    db.query(EmailAddress).filter(EmailAddress.organization_id == org_id).delete(synchronize_session=False)
+    db.query(SocialLink).filter(SocialLink.organization_id == org_id).delete(synchronize_session=False)
+    db.query(OrgBranch).filter(OrgBranch.organization_id == org_id).delete(synchronize_session=False)
+    db.query(TaskLead).filter(TaskLead.organization_id == org_id).delete(synchronize_session=False)
     db.delete(org)
     db.commit()
     return {"message": f"Organization '{org_name}' (ID: {org_id}) deleted successfully."}

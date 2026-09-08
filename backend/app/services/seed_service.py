@@ -71,13 +71,16 @@ def seed_cbse_schools(db: Session, include_puducherry: bool = False):
                 continue
 
             # Create new Organization record
-            address_str = f"{location}, {district}, {state} - {pincode} (CBSE Affiliation No: {affiliation})"
+            from app.core.tn_districts import normalize_district
+            canon_dist = normalize_district(district)
+            address_str = f"{location}, {canon_dist}, {state} - {pincode} (CBSE Affiliation No: {affiliation})"
             org = Organization(
                 task_id=1, # Default seed reference task
                 name=name,
                 category="CBSE School",
                 address=address_str,
-                city=district,
+                city=canon_dist,
+                district=canon_dist,
                 state=state,
                 pincode=pincode,
                 confidence="HIGH"

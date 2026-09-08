@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy.orm import Session
 from app.models.models import District
 
@@ -43,12 +44,64 @@ TAMIL_NADU_DISTRICTS = [
 ]
 
 ALL_REGIONS = TAMIL_NADU_DISTRICTS + [
-    {"name": "Puducherry", "url": "https://py.gov.in/", "state": "Puducherry UT"},
-    {"name": "Karaikal", "url": "https://karaikal.gov.in/", "state": "Puducherry UT"},
-    {"name": "Mahe", "url": "https://mahe.gov.in/", "state": "Puducherry UT"},
-    {"name": "Yanam", "url": "https://yanam.gov.in/", "state": "Puducherry UT"}
+    {"name": "Puducherry", "url": "https://py.gov.in/", "state": "Puducherry UT"}
 ]
 
+CANONICAL_DISTRICT_ALIASES = {
+    "kanchipuram": "Kancheepuram",
+    "kancheepuram": "Kancheepuram",
+    "pondicherry": "Puducherry",
+    "pondy": "Puducherry",
+    "puducherry": "Puducherry",
+    "puducherry ut": "Puducherry",
+    "karaikal": "Puducherry",
+    "mahe": "Puducherry",
+    "yanam": "Puducherry",
+    "tirupur": "Tiruppur",
+    "tiruppur": "Tiruppur",
+    "trichy": "Tiruchirappalli",
+    "tiruchirapalli": "Tiruchirappalli",
+    "tiruchirappalli": "Tiruchirappalli",
+    "tuticorin": "Thoothukudi",
+    "thoothukudi": "Thoothukudi",
+    "villupuram": "Viluppuram",
+    "viluppuram": "Viluppuram",
+    "kanyakumari": "Kanniyakumari",
+    "nagercoil": "Kanniyakumari",
+    "kanniyakumari": "Kanniyakumari",
+    "ramnad": "Ramanathapuram",
+    "ramanathapuram": "Ramanathapuram",
+    "thiruvarur": "Tiruvarur",
+    "tiruvarur": "Tiruvarur",
+    "udhagamandalam": "Nilgiris",
+    "ooty": "Nilgiris",
+    "nilgiris": "Nilgiris"
+}
+
+# Build canonical mapping from all 39 region names
+CANONICAL_REGIONS_MAP = {r["name"].lower(): r["name"] for r in ALL_REGIONS}
+for alias, target in CANONICAL_DISTRICT_ALIASES.items():
+    CANONICAL_REGIONS_MAP[alias.lower()] = target
+
+def normalize_district(district_name: Optional[str]) -> str:
+    """
+    Resolves alternate spellings and regional aliases to canonical district names.
+    Guarantees 38 TN districts + 1 Puducherry UT row (39 total).
+    """
+    if not district_name:
+        return ""
+    clean = district_name.strip()
+    clean_low = clean.lower()
+
+    if clean_low in CANONICAL_REGIONS_MAP:
+        return CANONICAL_REGIONS_MAP[clean_low]
+
+    # Partial match check against canonical regions map
+    for alias, canonical in CANONICAL_REGIONS_MAP.items():
+        if len(alias) >= 4 and (alias in clean_low or clean_low in alias):
+            return canonical
+
+    return clean.title()
 
 def seed_tn_districts(db: Session):
     for d in ALL_REGIONS:
@@ -65,4 +118,5 @@ def seed_tn_districts(db: Session):
         elif existing.state != target_state:
             existing.state = target_state
     db.commit()
+
 

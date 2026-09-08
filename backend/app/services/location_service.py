@@ -1,5 +1,6 @@
 import re
 from typing import Dict, Any, Tuple, Set, Optional
+from app.core.tn_districts import normalize_district
 
 # Administrative Districts of Tamil Nadu (All 38 Districts) & Union Territory of Puducherry
 TN_DISTRICTS_DATA = {
@@ -48,8 +49,8 @@ TN_DISTRICTS_DATA = {
         "state": "Tamil Nadu",
         "cities_towns": {"kallakurichi", "sankarapuram", "chinhasalem", "chinnasalem", "ulundurpet", "tirukoilur"}
     },
-    "kanchipuram": {
-        "district": "Kanchipuram",
+    "kancheepuram": {
+        "district": "Kancheepuram",
         "state": "Tamil Nadu",
         "cities_towns": {"kanchipuram", "kancheepuram", "sriperumbudur", "walajabad", "uttiramerur"}
     },
@@ -305,11 +306,12 @@ def normalize_target_location(location_str: str) -> Dict[str, Any]:
     # Match district in TN_DISTRICTS_DATA
     for dist_key, data in TN_DISTRICTS_DATA.items():
         if dist_key in loc_low or data["district"].lower() in loc_low or any(c in loc_low for c in data["cities_towns"]):
+            canon_dist = normalize_district(data["district"])
             return {
                 "target_country": "India",
                 "target_state_or_ut": data["state"],
-                "target_district": data["district"],
-                "target_city": data["district"],
+                "target_district": canon_dist,
+                "target_city": canon_dist,
                 "location_scope_type": "DISTRICT",
                 "valid_cities_in_district": set(data["cities_towns"]),
                 "raw_input": location_str
@@ -317,13 +319,14 @@ def normalize_target_location(location_str: str) -> Dict[str, Any]:
 
     # Generic extraction for other locations
     tokens = [t for t in loc_low.split() if t not in ("in", "the", "and", "near", "district", "city", "ut", "state", "india")]
-    district_name = tokens[0].capitalize() if tokens else loc_low.capitalize()
+    raw_dist = tokens[0].capitalize() if tokens else loc_low.capitalize()
+    canon_dist = normalize_district(raw_dist)
     
     return {
         "target_country": "India",
         "target_state_or_ut": "Tamil Nadu",
-        "target_district": district_name,
-        "target_city": district_name,
+        "target_district": canon_dist,
+        "target_city": canon_dist,
         "location_scope_type": "DISTRICT",
         "valid_cities_in_district": set(tokens),
         "raw_input": location_str

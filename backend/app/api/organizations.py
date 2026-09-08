@@ -34,53 +34,65 @@ def get_organization_stats(
         "total_emails": total_emails
     }
 
+def classify_org_category(cat: Optional[str]) -> Dict[str, bool]:
+    cat_lower = (cat or "").lower().strip()
+    is_it = "it company" in cat_lower or "software" in cat_lower or "tech" in cat_lower or "information technology" in cat_lower
+    is_college = "college" in cat_lower or "university" in cat_lower or "higher education" in cat_lower
+    is_school = "school" in cat_lower or "cbse" in cat_lower or "matriculation" in cat_lower or "academy" in cat_lower
+    is_hotel = "hotel" in cat_lower or "resort" in cat_lower or "lodging" in cat_lower or "hospitality" in cat_lower
+    is_hospital = "hospital" in cat_lower or "clinic" in cat_lower or "healthcare" in cat_lower or "medical" in cat_lower
+    is_comp = not is_it and ("company" in cat_lower or "corporate" in cat_lower or "business" in cat_lower or "enterprise" in cat_lower)
+
+    return {
+        "colleges": is_college,
+        "schools": is_school,
+        "hotels": is_hotel,
+        "hospitals": is_hospital,
+        "it_companies": is_it,
+        "companies": is_comp
+    }
+
 def _query_eligible_matrix_counts(db: Session):
-    # Enforce Part 11 Master Organization Eligibility Rules:
-    # Only count non-quarantined, verified organizations
+    from app.core.tn_districts import normalize_district
+    
     counts_query = db.query(
-        func.lower(Organization.district).label("district"),
-        func.lower(Organization.category).label("category"),
+        Organization.district,
+        Organization.category,
         func.count(Organization.id).label("count")
     ).filter(
-        Organization.is_quarantined == False,
+        Organization.is_quarantined.isnot(True),
         or_(
             Organization.admin_verified == True,
             Organization.source_type == "SCRAPER_VERIFIED"
         )
     ).group_by(
-        func.lower(Organization.district),
-        func.lower(Organization.category)
+        Organization.district,
+        Organization.category
     ).all()
 
     counts_map = {}
     for d_name, cat, count in counts_query:
         if not d_name:
             continue
-        d_key = d_name.strip().lower()
+        canon_dist = normalize_district(d_name)
+        d_key = canon_dist.lower()
         if d_key not in counts_map:
             counts_map[d_key] = {"total": 0, "colleges": 0, "hotels": 0, "hospitals": 0, "companies": 0, "it_companies": 0, "schools": 0}
 
         counts_map[d_key]["total"] += count
-        cat_lower = (cat or "").lower()
+        cats = classify_org_category(cat)
 
-        is_college = "college" in cat_lower or "university" in cat_lower or "institution" in cat_lower
-        is_school = "school" in cat_lower or "cbse" in cat_lower or "academy" in cat_lower or "matriculation" in cat_lower
-        is_hotel = "hotel" in cat_lower or "resort" in cat_lower or "hospitality" in cat_lower or "lodging" in cat_lower
-        is_hospital = "hospital" in cat_lower or "clinic" in cat_lower or "healthcare" in cat_lower or "medical" in cat_lower
-        is_it = "it company" in cat_lower or "software" in cat_lower or "tech" in cat_lower or "information technology" in cat_lower
-        is_comp = "company" in cat_lower or "corporate" in cat_lower or "business" in cat_lower or "enterprise" in cat_lower
-
-        if is_college:
+        if cats["colleges"]:
             counts_map[d_key]["colleges"] += count
-        if is_school:
+        if cats["schools"]:
             counts_map[d_key]["schools"] += count
-        if is_hotel:
+        if cats["hotels"]:
             counts_map[d_key]["hotels"] += count
-        if is_hospital:
+        if cats["hospitals"]:
             counts_map[d_key]["hospitals"] += count
-        if is_it:
+        if cats["it_companies"]:
             counts_map[d_key]["it_companies"] += count
-        if is_comp:
+        if cats["companies"]:
             counts_map[d_key]["companies"] += count
 
     return counts_map
@@ -111,27 +123,7 @@ def get_district_breakdown(db: Session = Depends(get_db)):
 
     return result
 
-@router.get("/matrix")
-def get_organization_matrix(db: Session = Depends(get_db)):
-    districts = db.query(District).order_by(District.district_name.asc()).all()
-    counts_map = _query_eligible_matrix_counts(db)
 
-    result = []
-    for dist in districts:
-        d_key = dist.district_name.strip().lower()
-        d_counts = counts_map.get(d_key, {"total": 0, "colleges": 0, "hotels": 0, "hospitals": 0, "companies": 0, "it_companies": 0, "schools": 0})
-        result.append({
-            "region": dist.district_name,
-            "colleges": d_counts["colleges"],
-            "schools": d_counts["schools"],
-            "hotels": d_counts["hotels"],
-            "hospitals": d_counts["hospitals"],
-            "companies": d_counts["companies"],
-            "it_companies": d_counts["it_companies"],
-            "total": d_counts["total"]
-        })
-
-    return result
 
 @router.get("")
 def list_organizations(
@@ -303,36 +295,7 @@ def get_campaign_matrix(
 ):
     from app.core.tn_districts import ALL_REGIONS
     
-    counts_query = db.query(
-        func.lower(Organization.district).label("district"),
-        func.lower(Organization.category).label("category"),
-        func.count(Organization.id).label("count")
-    ).group_by(
-        func.lower(Organization.district),
-        func.lower(Organization.category)
-    ).all()
-
-    counts_map = {}
-    for d_name, cat, count in counts_query:
-        if not d_name:
-            continue
-        if d_name not in counts_map:
-            counts_map[d_name] = {"total": 0, "colleges": 0, "schools": 0, "hotels": 0, "hospitals": 0, "companies": 0, "it_companies": 0}
-        
-        counts_map[d_name]["total"] += count
-        cat_lower = (cat or "").lower()
-        if "college" in cat_lower or "university" in cat_lower:
-            counts_map[d_name]["colleges"] += count
-        if "school" in cat_lower:
-            counts_map[d_name]["schools"] += count
-        if "hotel" in cat_lower or "resort" in cat_lower:
-            counts_map[d_name]["hotels"] += count
-        if "hospital" in cat_lower or "clinic" in cat_lower:
-            counts_map[d_name]["hospitals"] += count
-        if "company" in cat_lower:
-            counts_map[d_name]["companies"] += count
-        if "it" in cat_lower or "software" in cat_lower or "tech" in cat_lower:
-            counts_map[d_name]["it_companies"] += count
+    counts_map = _query_eligible_matrix_counts(db)
 
     matrix = []
     for reg in ALL_REGIONS:
@@ -341,12 +304,19 @@ def get_campaign_matrix(
         matrix.append({
             "region": r_name,
             "colleges": r_counts["colleges"],
+            "colleges_target": 32,
             "schools": r_counts["schools"],
+            "schools_target": 23,
             "hotels": r_counts["hotels"],
+            "hotels_target": 50,
             "hospitals": r_counts["hospitals"],
+            "hospitals_target": 20,
             "companies": r_counts["companies"],
+            "companies_target": 24,
             "it_companies": r_counts["it_companies"],
-            "total": r_counts["total"]
+            "it_companies_target": 28,
+            "total": r_counts["total"],
+            "total_target": 177
         })
 
     return matrix
@@ -357,9 +327,11 @@ def create_organization_manual(
     db: Session = Depends(get_db),
     admin_user: User = Depends(get_current_admin_user)
 ):
+    from app.core.tn_districts import normalize_district
     name = (payload.get("name") or "").strip()
     category = (payload.get("category") or "").strip()
-    district = (payload.get("district") or payload.get("region") or "").strip()
+    raw_district = (payload.get("district") or payload.get("region") or "").strip()
+    district = normalize_district(raw_district)
 
     if not name or not category or not district:
         raise HTTPException(status_code=400, detail="Organization Name, Category, and District/Region are required.")

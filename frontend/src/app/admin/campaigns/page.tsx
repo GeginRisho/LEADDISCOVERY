@@ -22,9 +22,9 @@ export default function AdminCampaignsPage() {
   const [maxResults, setMaxResults] = useState(15);
   const [activeTab, setActiveTab] = useState<"matrix" | "campaigns">("matrix");
 
-  const loadData = async () => {
+  const loadData = async (isInitial = false) => {
     try {
-      setLoading(true);
+      if (isInitial || matrix.length === 0) setLoading(true);
       const [cmps, matData] = await Promise.all([
         api.getCampaigns(),
         api.getOrganizationMatrix()
@@ -46,16 +46,19 @@ export default function AdminCampaignsPage() {
   };
 
   useEffect(() => {
-    loadData();
+    loadData(true);
     const interval = setInterval(() => {
       api.getCampaigns().then((cmps) => {
         setCampaigns(cmps);
+        const hasActive = cmps.some((c: any) => c.status === "RUNNING" || c.status === "PENDING");
+        if (hasActive) {
+          api.getOrganizationMatrix().then(setMatrix).catch(() => {});
+        }
         if (selectedCampaign) {
           api.getCampaignDetail(selectedCampaign.id).then(setSelectedCampaign).catch(() => {});
         }
       }).catch(() => {});
-      api.getOrganizationMatrix().then(setMatrix).catch(() => {});
-    }, 10000);
+    }, 8000);
     return () => clearInterval(interval);
   }, []);
 
@@ -167,7 +170,7 @@ export default function AdminCampaignsPage() {
         </div>
 
         <button
-          onClick={loadData}
+          onClick={() => loadData(false)}
           disabled={loading}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 shadow-xs"
         >
@@ -298,21 +301,50 @@ export default function AdminCampaignsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 font-semibold text-gray-800">
-                {matrix.map((row) => (
-                  <tr key={row.region} className={`hover:bg-orange-50/40 transition-colors ${row.region === "Puducherry" ? "bg-sky-50/50 font-bold" : ""}`}>
-                    <td className="py-2.5 px-4 font-bold text-gray-900 flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5 text-orange-500" />
-                      {row.region} {row.region === "Puducherry" && <span className="text-[10px] bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded uppercase">UT</span>}
+                {matrix.length === 0 && loading ? (
+                  [...Array(10)].map((_, idx) => (
+                    <tr key={`skel-${idx}`} className="animate-pulse">
+                      <td className="py-3 px-4"><div className="h-4 w-28 bg-gray-200 rounded"></div></td>
+                      <td className="py-3 px-4 text-center"><div className="h-4 w-8 bg-gray-100 rounded mx-auto"></div></td>
+                      <td className="py-3 px-4 text-center"><div className="h-4 w-8 bg-gray-100 rounded mx-auto"></div></td>
+                      <td className="py-3 px-4 text-center"><div className="h-4 w-8 bg-gray-100 rounded mx-auto"></div></td>
+                      <td className="py-3 px-4 text-center"><div className="h-4 w-8 bg-gray-100 rounded mx-auto"></div></td>
+                      <td className="py-3 px-4 text-center"><div className="h-4 w-8 bg-gray-100 rounded mx-auto"></div></td>
+                      <td className="py-3 px-4 text-center"><div className="h-4 w-8 bg-gray-100 rounded mx-auto"></div></td>
+                      <td className="py-3 px-4 text-right"><div className="h-4 w-10 bg-gray-200 rounded ml-auto"></div></td>
+                    </tr>
+                  ))
+                ) : matrix.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-8 text-center text-gray-400 font-medium">
+                      No matrix records found in PostgreSQL database.
                     </td>
-                    <td className="py-2.5 px-4 text-center">{row.colleges > 0 ? <span className="text-emerald-700 font-extrabold">{row.colleges}</span> : <span className="text-gray-400 font-normal">0</span>}</td>
-                    <td className="py-2.5 px-4 text-center">{row.schools > 0 ? <span className="text-emerald-700 font-extrabold">{row.schools}</span> : <span className="text-gray-400 font-normal">0</span>}</td>
-                    <td className="py-2.5 px-4 text-center">{row.hotels > 0 ? <span className="text-emerald-700 font-extrabold">{row.hotels}</span> : <span className="text-gray-400 font-normal">0</span>}</td>
-                    <td className="py-2.5 px-4 text-center">{row.hospitals > 0 ? <span className="text-emerald-700 font-extrabold">{row.hospitals}</span> : <span className="text-gray-400 font-normal">0</span>}</td>
-                    <td className="py-2.5 px-4 text-center">{row.companies > 0 ? <span className="text-emerald-700 font-extrabold">{row.companies}</span> : <span className="text-gray-400 font-normal">0</span>}</td>
-                    <td className="py-2.5 px-4 text-center">{row.it_companies > 0 ? <span className="text-emerald-700 font-extrabold">{row.it_companies}</span> : <span className="text-gray-400 font-normal">0</span>}</td>
-                    <td className="py-2.5 px-4 text-right font-black text-gray-900">{row.total}</td>
                   </tr>
-                ))}
+                ) : (
+                  matrix.map((row) => {
+                    const renderCount = (count: number, isTotal = false) => (
+                      <span className={isTotal ? (count > 0 ? "text-emerald-700 font-black text-xs" : "text-gray-400 font-normal") : (count > 0 ? "text-blue-700 font-extrabold" : "text-gray-400 font-normal")}>
+                        {count}
+                      </span>
+                    );
+
+                    return (
+                      <tr key={row.region} className={`hover:bg-orange-50/40 transition-colors ${row.region === "Puducherry" ? "bg-sky-50/50 font-bold" : ""}`}>
+                        <td className="py-2.5 px-4 font-bold text-gray-900 flex items-center gap-1.5">
+                          <MapPin className="h-3.5 w-3.5 text-orange-500" />
+                          {row.region} {row.region === "Puducherry" && <span className="text-[10px] bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded uppercase font-extrabold">UT</span>}
+                        </td>
+                        <td className="py-2.5 px-4 text-center">{renderCount(row.colleges || 0)}</td>
+                        <td className="py-2.5 px-4 text-center">{renderCount(row.schools || 0)}</td>
+                        <td className="py-2.5 px-4 text-center">{renderCount(row.hotels || 0)}</td>
+                        <td className="py-2.5 px-4 text-center">{renderCount(row.hospitals || 0)}</td>
+                        <td className="py-2.5 px-4 text-center">{renderCount(row.companies || 0)}</td>
+                        <td className="py-2.5 px-4 text-center">{renderCount(row.it_companies || 0)}</td>
+                        <td className="py-2.5 px-4 text-right">{renderCount(row.total || 0, true)}</td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>

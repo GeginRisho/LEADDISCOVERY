@@ -40,8 +40,11 @@ def create_database_if_not_exists():
 # Auto-initialize database on import
 create_database_if_not_exists()
 
+db_url_parsed = make_url(settings.DATABASE_URL)
+db_host = db_url_parsed.host or "localhost"
+db_name = db_url_parsed.database or "leaddiscovery"
 db_type = "SQLite Local" if "sqlite" in settings.DATABASE_URL.lower() else ("Neon PostgreSQL" if "neon.tech" in settings.DATABASE_URL.lower() else "PostgreSQL Database")
-print(f"Connected to database environment: {db_type}")
+print(f"Connected to database environment: {db_type} | Host: {db_host} | Database: {db_name}")
 
 engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

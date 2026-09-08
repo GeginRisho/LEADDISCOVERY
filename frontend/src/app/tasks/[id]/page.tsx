@@ -409,7 +409,7 @@ export default function TaskDetailsPage() {
                   {leads.length === 0 && isRunning
                     ? "Discovered candidates and extracted contacts will populate automatically as pages are crawled."
                     : leads.length === 0 && (isZeroResults || isBelowMinimum)
-                    ? "Discovery completed. Check Live Monitor Logs to review provider candidate evaluation details."
+                    ? "Discovery completed. No eligible verified organizations met qualification thresholds."
                     : "No leads matched your current search or confidence filter criteria."}
                 </p>
               </div>

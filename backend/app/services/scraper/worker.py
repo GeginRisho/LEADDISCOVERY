@@ -51,15 +51,13 @@ def is_url_list(text: str) -> bool:
     return text_stripped.startswith(("http://", "https://", "www.")) or text_stripped.endswith((".com", ".org", ".net", ".edu", ".in"))
 
 def resolve_district(db: Session, location: str, city: str = "") -> Tuple[Optional[int], Optional[str]]:
+    from app.core.tn_districts import normalize_district
+    canon_dist = normalize_district(location or city)
     districts = db.query(District).all()
-    loc_clean = (location or "").lower().strip()
-    city_clean = (city or "").lower().strip()
-    
     for d in districts:
-        d_name_low = d.district_name.lower()
-        if d_name_low in loc_clean or loc_clean in d_name_low or (city_clean and (d_name_low in city_clean or city_clean in d_name_low)):
+        if d.district_name.lower() == canon_dist.lower():
             return d.id, d.district_name
-    return None, location
+    return None, canon_dist
 
 def sync_task_counters(db: Session, task_id: int):
     """
@@ -195,8 +193,53 @@ async def resolve_official_website(
 
                 return normalize_url(actual_url), domain, None
     except Exception as e:
-        dur_ms = int((time.time() - res_start) * 1000)
-        return None, None, f"Website resolution timeout/error after {dur_ms}ms: {str(e)}"
+        pass
+
+    # Fallback to DuckDuckGo if Bing yielded no result or failed
+    try:
+        ddg_query = urllib.parse.quote_plus(f"{org_name} {location} official website")
+        ddg_url = f"https://html.duckduckgo.com/html/?q={ddg_query}"
+        ddg_resp = await asyncio.wait_for(client.get(ddg_url, headers=headers), timeout=5.0)
+        if ddg_resp.status_code == 200:
+            from bs4 import BeautifulSoup
+            from app.services.scraper.discovery import unwrap_ddg_url
+            d_soup = BeautifulSoup(ddg_resp.text, "lxml")
+            clean_org = clean_org_name(org_name)
+            org_words = set(w for w in clean_org.split() if len(w) >= 3 and w not in ("hotel", "hotels", "school", "schools", "college", "colleges", "hospital", "hospitals", "resort", "resorts", "inn", "stay", "lodge", "puducherry", "pondicherry", "salem", "chennai", "kanyakumari"))
+
+            for a_item in d_soup.find_all("a", class_="result__a"):
+                raw_href = a_item.get("href")
+                if not raw_href:
+                    continue
+                actual_url = unwrap_ddg_url(raw_href)
+                if not actual_url:
+                    continue
+                domain = extract_domain(actual_url)
+                if not domain or is_directory_domain(domain):
+                    continue
+
+                clean_domain_part = domain.split(".")[0].lower()
+                domain_words = set(re.split(r'[^a-zA-Z0-9]', clean_domain_part))
+                is_institutional = any(inst in domain for inst in [".edu.in", ".ac.in", ".org.in", ".edu", ".ac", ".school"])
+
+                if org_words and not is_institutional:
+                    overlap = org_words.intersection(domain_words)
+                    if not overlap:
+                        brand_match = False
+                        if len(org_words) >= 2:
+                            words_in_domain = sum(1 for bw in org_words if bw in clean_domain_part)
+                            if words_in_domain >= 2:
+                                brand_match = True
+                        else:
+                            single_word = list(org_words)[0]
+                            if single_word in clean_domain_part:
+                                brand_match = True
+                        if not brand_match:
+                            continue
+
+                return normalize_url(actual_url), domain, None
+    except Exception:
+        pass
 
     dur_ms = int((time.time() - res_start) * 1000)
     return None, None, f"No standalone official domain found ({dur_ms}ms)"

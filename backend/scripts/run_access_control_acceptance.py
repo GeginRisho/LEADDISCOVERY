@@ -1,5 +1,7 @@
 import sys
 import os
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 from fastapi.testclient import TestClient
 
 # Ensure root import path

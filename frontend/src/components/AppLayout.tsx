@@ -36,8 +36,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   
-  const [user, setUser] = useState<UserType | null>(null);
-  const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
+  const [user, setUser] = useState<UserType | null>(() => api.getCachedUser());
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("token") ? "authenticated" : "unauthenticated";
+    }
+    return "loading";
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -69,7 +74,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Optimistic authentication when token is present: render shell immediately!
+      // Optimistic authentication: set authenticated immediately
       if (isMounted) {
         setAuthStatus("authenticated");
         const cached = api.getCachedUser();
@@ -78,12 +83,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         }
       }
 
+      // Non-blocking background verification with auto-dismiss so UI is never stuck
+      setIsServerConnecting(true);
+      const dismissTimer = setTimeout(() => {
+        if (isMounted) setIsServerConnecting(false);
+      }, 3500);
+
       try {
-        setIsServerConnecting(true);
         const userData = await api.getMe();
         if (isMounted) {
           setUser(userData);
           setIsServerConnecting(false);
+          clearTimeout(dismissTimer);
           if (isAuthRoute) {
             router.push(userData.role === "ADMIN" ? "/admin" : "/");
           }
@@ -91,6 +102,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       } catch (err: any) {
         if (isMounted) {
           setIsServerConnecting(false);
+          clearTimeout(dismissTimer);
           const stillHasToken = typeof window !== "undefined" && !!localStorage.getItem("token");
           if (!stillHasToken) {
             setUser(null);
@@ -352,9 +364,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             
             <div className="flex items-center gap-4">
               {isServerConnecting && (
-                <div className="flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 animate-pulse">
-                  <Loader2 className="h-3.5 w-3.5 text-amber-500 animate-spin" />
-                  Connecting to server...
+                <div className="flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full bg-orange-50/80 border border-orange-200/80 text-orange-700">
+                  <Loader2 className="h-3.5 w-3.5 text-orange-500 animate-spin" />
+                  Syncing session...
                 </div>
               )}
               <div className="hidden md:flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full bg-orange-50 border border-orange-200 text-orange-700">

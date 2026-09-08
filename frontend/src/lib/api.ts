@@ -1,8 +1,30 @@
 const getApiBase = (): string => {
-  const url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-  return url.replace(/\/+$/, "");
+  let url = process.env.NEXT_PUBLIC_API_URL;
+
+  // In browser runtime, if deployed on Vercel or any non-local host,
+  // NEVER point to localhost even if an environment variable was missed at build time.
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    const isLocal = host === "localhost" || host === "127.0.0.1";
+    if (!isLocal) {
+      url = "https://leaddiscovery.onrender.com";
+    }
+  }
+
+  if (!url || url.includes("localhost") || url.includes("127.0.0.1")) {
+    // If not in a local browser, default to production Render URL
+    if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      url = "https://leaddiscovery.onrender.com";
+    } else if (!url) {
+      url = "https://leaddiscovery.onrender.com";
+    }
+  }
+
+  // Strip trailing slashes and any trailing /api to guarantee no /api/api duplicate paths
+  return url.replace(/\/+$/, "").replace(/\/api\/?$/, "");
 };
 const API_BASE = getApiBase();
+
 
 export interface User {
   id: number;
@@ -202,7 +224,9 @@ class ApiClient {
   }
 
   private async request(endpoint: string, options: RequestInit = {}): Promise<any> {
-    const url = `${API_BASE}${endpoint}`;
+    const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    const base = getApiBase();
+    const url = `${base}${cleanEndpoint}`;
     const headers = new Headers(options.headers || {});
     
     // Inject JWT token if available
@@ -215,15 +239,38 @@ class ApiClient {
       headers.set("Content-Type", "application/json");
     }
 
+    const isGet = !options.method || options.method.toUpperCase() === "GET";
+    const timeoutMs = isGet ? 12_000 : 25_000;
+
     let response: Response;
-    try {
-      response = await fetch(url, {
-        ...options,
-        headers
-      });
-    } catch (err: any) {
-      throw new Error("Unable to connect to the server.");
-    }
+    const fetchWithTimeout = async (attempt: number): Promise<Response> => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const res = await fetch(url, {
+          ...options,
+          headers,
+          signal: controller.signal
+        });
+        clearTimeout(timer);
+        return res;
+      } catch (err: any) {
+        clearTimeout(timer);
+        const isAbort = err.name === "AbortError";
+        // Fast retry once for idempotent GET if Render is waking up
+        if (isGet && attempt === 1) {
+          await new Promise((r) => setTimeout(r, 1200));
+          return fetchWithTimeout(2);
+        }
+        if (isAbort) {
+          throw new Error("Server is waking up. Please refresh or retry in a few seconds.");
+        }
+        throw new Error("Unable to connect to the server.");
+      }
+    };
+
+    response = await fetchWithTimeout(1);
 
     if (response.status === 401) {
       this.removeToken();
@@ -239,8 +286,8 @@ class ApiClient {
         const errorData = await response.json();
         errorDetail = errorData.detail || errorDetail;
       } catch {
-        if (response.status === 500 || response.status === 502 || response.status === 503) {
-          errorDetail = "Server unavailable. Please try again later.";
+        if (response.status === 500 || response.status === 502 || response.status === 503 || response.status === 504) {
+          errorDetail = "Server unavailable or waking up. Please try again in a moment.";
         }
       }
       throw new Error(errorDetail);
