@@ -43,12 +43,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const showToast = React.useCallback((message: string, type: "success" | "error" | "info" = "success") => {
-    const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+    setToasts((prev) => {
+      if (prev.some((t) => t.message === message && t.type === type)) {
+        return prev;
+      }
+      const id = Math.random().toString(36).substring(2, 9);
+      setTimeout(() => {
+        setToasts((curr) => curr.filter((t) => t.id !== id));
+      }, 4000);
+      return [...prev, { id, message, type }];
+    });
   }, []);
+
+  // Clear stale transient errors when navigating between pages
+  useEffect(() => {
+    setToasts((prev) => prev.filter((t) => t.type !== "error"));
+  }, [pathname]);
 
   const [isServerConnecting, setIsServerConnecting] = useState(false);
 

@@ -70,23 +70,26 @@ class ScrapingTask(Base):
 
     @property
     def user_email(self) -> str:
+        if hasattr(self, "_user_email") and self._user_email is not None:
+            return self._user_email
         return self.user.email if self.user else "System/Guest"
 
     @property
     def lead_count(self) -> int:
-        return len(self.task_leads) if self.task_leads else (len(self.organizations) if self.organizations else 0)
+        if hasattr(self, "_lead_count") and self._lead_count is not None:
+            return self._lead_count
+        # Avoid loading thousands of records if relationships are not already in memory
+        if "task_leads" in self.__dict__ and self.task_leads:
+            return len(self.task_leads)
+        if "organizations" in self.__dict__ and self.organizations:
+            return len(self.organizations)
+        return 0
 
     @property
     def social_count(self) -> int:
-        count = 0
-        if self.task_leads:
-            for tl in self.task_leads:
-                if tl.organization:
-                    count += len(tl.organization.social_links) if tl.organization.social_links else 0
-        elif self.organizations:
-            for org in self.organizations:
-                count += len(org.social_links) if org.social_links else 0
-        return count
+        if hasattr(self, "_social_count") and self._social_count is not None:
+            return self._social_count
+        return 0
 
 class Organization(Base):
     __tablename__ = "organizations"

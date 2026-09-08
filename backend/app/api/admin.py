@@ -591,7 +591,7 @@ def admin_create_organization(
             db.add(pn)
 
     # Process Emails List
-    emails_list = payload.get("email_addresses") or []
+    emails_list = payload.get("email_addresses") or payload.get("emails") or []
     if not emails_list and payload.get("email"):
         emails_list = [{"email": payload["email"], "extraction_method": "admin_manual"}]
 
@@ -708,16 +708,19 @@ def admin_update_organization(
                 db.add(PhoneNumber(organization_id=org.id, raw_value=raw_v, normalized_value=norm_v, type=p.get("type") or "office"))
 
     # Update Emails if provided
-    if "email_addresses" in payload and isinstance(payload["email_addresses"], list):
-        db.query(EmailAddress).filter(EmailAddress.organization_id == org.id).delete()
-        for e in payload["email_addresses"]:
-            em_val = (e.get("email") if isinstance(e, dict) else e or "").strip()
-            if em_val:
-                db.add(EmailAddress(
-                    organization_id=org.id,
-                    email=em_val,
-                    extraction_method=(e.get("extraction_method") if isinstance(e, dict) else "admin_manual")
-                ))
+    has_emails = ("email_addresses" in payload and isinstance(payload["email_addresses"], list)) or ("emails" in payload and isinstance(payload["emails"], list))
+    if has_emails:
+        emails_payload = payload.get("email_addresses") if "email_addresses" in payload else payload.get("emails")
+        if isinstance(emails_payload, list):
+            db.query(EmailAddress).filter(EmailAddress.organization_id == org.id).delete()
+            for e in emails_payload:
+                em_val = (e.get("email") if isinstance(e, dict) else e or "").strip()
+                if em_val:
+                    db.add(EmailAddress(
+                        organization_id=org.id,
+                        email=em_val,
+                        extraction_method=(e.get("extraction_method") if isinstance(e, dict) else "admin_manual")
+                    ))
 
     # Update Branches if provided
     if "branches" in payload and isinstance(payload["branches"], list):
@@ -887,3 +890,58 @@ def admin_unverify_organization(
         "admin_verified": False,
         "source_type": org.source_type
     }
+
+@router.post("/organizations/bulk-sync-emails")
+def bulk_sync_emails(
+    payload: dict,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(get_current_admin_user)
+):
+    items = payload.get("items") or []
+    synced_count = 0
+    skipped_count = 0
+
+    for item in items:
+        org_id = item.get("organization_id")
+        name = (item.get("name") or "").strip()
+        district = (item.get("district") or "").strip()
+        emails = item.get("emails") or item.get("email_addresses") or []
+        if not emails:
+            continue
+
+        org = None
+        if org_id:
+            org = db.query(Organization).filter(Organization.id == org_id).first()
+        elif name and district:
+            org = db.query(Organization).filter(Organization.name.ilike(name), Organization.district.ilike(district)).first()
+        elif name:
+            org = db.query(Organization).filter(Organization.name.ilike(name)).first()
+
+        if not org:
+            skipped_count += 1
+            continue
+
+        existing_emails = {e.email.strip().lower() for e in org.email_addresses}
+        added_for_org = False
+        for e in emails:
+            em_val = (e.get("email") if isinstance(e, dict) else e or "").strip()
+            if em_val and em_val.lower() not in existing_emails:
+                method = (e.get("extraction_method") if isinstance(e, dict) else "OFFICIAL_REGISTRY") or "OFFICIAL_REGISTRY"
+                db.add(EmailAddress(
+                    organization_id=org.id,
+                    email=em_val,
+                    extraction_method=method
+                ))
+                existing_emails.add(em_val.lower())
+                added_for_org = True
+
+        if added_for_org:
+            synced_count += 1
+
+    db.commit()
+    return {
+        "message": f"Successfully synced emails for {synced_count} organizations (skipped: {skipped_count}).",
+        "synced_organizations": synced_count,
+        "total_emails_now": db.query(func.count(EmailAddress.id)).scalar() or 0
+    }
+

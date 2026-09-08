@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Query
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy import or_, and_, func, case
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 import io
 import datetime
 from app.core.database import get_db
-from app.models.models import ScrapingTask, Organization, ScrapingLog
+from app.models.models import ScrapingTask, Organization, ScrapingLog, TaskLead, User
 from app.schemas.tasks import ScrapingTaskCreate, ScrapingTaskResponse, ScrapingLogResponse
 from app.schemas.leads import OrganizationLeadResponse
 from app.api.auth import get_current_user
@@ -17,11 +17,17 @@ router = APIRouter(prefix="/tasks", tags=["Scraping Tasks"])
 
 def find_task_by_id_or_public(task_id: str, db: Session) -> ScrapingTask:
     # Support looking up either by public_task_id (e.g. TASK-000001) or by integer ID
-    task = db.query(ScrapingTask).filter(ScrapingTask.public_task_id == task_id).first()
+    task = db.query(ScrapingTask).options(joinedload(ScrapingTask.user)).filter(ScrapingTask.public_task_id == task_id).first()
     if not task and task_id.isdigit():
-        task = db.query(ScrapingTask).filter(ScrapingTask.id == int(task_id)).first()
+        task = db.query(ScrapingTask).options(joinedload(ScrapingTask.user)).filter(ScrapingTask.id == int(task_id)).first()
     if not task:
         raise HTTPException(status_code=404, detail=f"Scraping task '{task_id}' not found.")
+    count = db.query(func.count(TaskLead.id)).filter(TaskLead.task_id == task.id).scalar() or 0
+    if count == 0:
+        count = db.query(func.count(Organization.id)).filter(Organization.task_id == task.id).scalar() or 0
+    task._lead_count = count
+    task._user_email = task.user.email if task.user else "System/Guest"
+    task._social_count = 0
     return task
 
 def is_lead_qualified(lead: Organization, required_fields: Optional[List[str]]) -> bool:
@@ -278,6 +284,7 @@ def create_task(
     return task
 
 @router.get("", response_model=List[ScrapingTaskResponse])
+@router.get("/history", response_model=List[ScrapingTaskResponse])
 def list_tasks(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
@@ -285,14 +292,46 @@ def list_tasks(
     current_user = Depends(get_current_user)
 ):
     offset = (page - 1) * limit
+    query = db.query(ScrapingTask).options(joinedload(ScrapingTask.user))
     if current_user and current_user.role == "ADMIN":
-        query = db.query(ScrapingTask).order_by(ScrapingTask.created_at.desc())
+        pass
     elif current_user:
-        query = db.query(ScrapingTask).filter(ScrapingTask.user_id == current_user.id).order_by(ScrapingTask.created_at.desc())
+        query = query.filter(ScrapingTask.user_id == current_user.id)
     else:
         return []
 
-    tasks = query.offset(offset).limit(limit).all()
+    tasks = query.order_by(ScrapingTask.created_at.desc()).offset(offset).limit(limit).all()
+    if not tasks:
+        return []
+
+    task_ids = [t.id for t in tasks]
+
+    # Efficient aggregated lead count query without loading orgs or leads
+    lead_counts_query = (
+        db.query(TaskLead.task_id, func.count(TaskLead.id))
+        .filter(TaskLead.task_id.in_(task_ids))
+        .group_by(TaskLead.task_id)
+        .all()
+    )
+    lead_counts_map = {tid: count for tid, count in lead_counts_query if tid is not None}
+
+    # Also count from Organization.task_id for legacy manual/scraper tasks
+    org_counts_query = (
+        db.query(Organization.task_id, func.count(Organization.id))
+        .filter(Organization.task_id.in_(task_ids))
+        .group_by(Organization.task_id)
+        .all()
+    )
+    org_counts_map = {tid: count for tid, count in org_counts_query if tid is not None}
+
+    for t in tasks:
+        leads_total = lead_counts_map.get(t.id, 0)
+        if leads_total == 0:
+            leads_total = org_counts_map.get(t.id, 0)
+        t._lead_count = leads_total
+        t._social_count = 0
+        t._user_email = t.user.email if t.user else "System/Guest"
+
     return tasks
 
 @router.get("/overview")

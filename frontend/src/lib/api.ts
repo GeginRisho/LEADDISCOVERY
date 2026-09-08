@@ -407,7 +407,8 @@ class ApiClient {
   }
 
   async getTasks(page: number = 1, limit: number = 50): Promise<ScrapingTask[]> {
-    const tasks = await this.cachedGet<ScrapingTask[]>(`/api/tasks?page=${page}&limit=${limit}`, 15_000);
+    const raw = await this.cachedGet<ScrapingTask[] | { items: ScrapingTask[]; total: number }>(`/api/tasks?page=${page}&limit=${limit}`, 15_000);
+    const tasks = Array.isArray(raw) ? raw : (raw && Array.isArray((raw as any).items) ? (raw as any).items : []);
     if (Array.isArray(tasks)) {
       tasks.forEach((t) => this.setTaskCache(t));
     }
