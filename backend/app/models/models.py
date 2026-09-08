@@ -59,7 +59,7 @@ class ScrapingTask(Base):
     
     error_info = Column(Text, nullable=True)
     
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     

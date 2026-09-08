@@ -414,6 +414,20 @@ class ApiClient {
     return tasks;
   }
 
+  async getDashboardOverview(): Promise<{
+    stats: {
+      total_tasks: number;
+      total_websites_found: number;
+      total_crawled: number;
+      total_failed: number;
+      running_tasks: number;
+      completed_tasks: number;
+    };
+    recent_tasks: ScrapingTask[];
+  }> {
+    return this.cachedGet("/api/tasks/overview", 5_000);
+  }
+
   async getTask(id: string): Promise<ScrapingTask> {
     const task = await this.cachedGet<ScrapingTask>(`/api/tasks/${id}`, 15_000);
     if (task && task.public_task_id) {

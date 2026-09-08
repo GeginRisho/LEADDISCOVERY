@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Query
 from fastapi.responses import StreamingResponse, Response
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func, case
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import io
@@ -294,6 +294,57 @@ def list_tasks(
 
     tasks = query.offset(offset).limit(limit).all()
     return tasks
+
+@router.get("/overview")
+def get_dashboard_overview(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    base_query = db.query(
+        func.count(ScrapingTask.id).label("total_tasks"),
+        func.coalesce(func.sum(ScrapingTask.websites_found), 0).label("total_websites_found"),
+        func.coalesce(func.sum(ScrapingTask.websites_crawled), 0).label("total_crawled"),
+        func.coalesce(func.sum(ScrapingTask.failed_count), 0).label("total_failed"),
+        func.sum(case((ScrapingTask.status == "RUNNING", 1), else_=0)).label("running_tasks"),
+        func.sum(case((ScrapingTask.status == "COMPLETED", 1), else_=0)).label("completed_tasks")
+    )
+    if current_user.role != "ADMIN":
+        base_query = base_query.filter(ScrapingTask.user_id == current_user.id)
+    
+    stats_row = base_query.first()
+
+    recent_query = db.query(ScrapingTask)
+    if current_user.role != "ADMIN":
+        recent_query = recent_query.filter(ScrapingTask.user_id == current_user.id)
+    recent_tasks = recent_query.order_by(ScrapingTask.created_at.desc()).limit(5).all()
+
+    return {
+        "stats": {
+            "total_tasks": int(stats_row.total_tasks or 0),
+            "total_websites_found": int(stats_row.total_websites_found or 0),
+            "total_crawled": int(stats_row.total_crawled or 0),
+            "total_failed": int(stats_row.total_failed or 0),
+            "running_tasks": int(stats_row.running_tasks or 0),
+            "completed_tasks": int(stats_row.completed_tasks or 0),
+        },
+        "recent_tasks": [
+            {
+                "id": t.id,
+                "public_task_id": t.public_task_id,
+                "keyword": t.keyword,
+                "location": t.location,
+                "status": t.status,
+                "progress": t.progress,
+                "websites_found": t.websites_found or 0,
+                "websites_crawled": t.websites_crawled or 0,
+                "discovered_count": t.discovered_count or 0,
+                "failed_count": t.failed_count or 0,
+                "created_at": t.created_at,
+                "completed_at": t.completed_at
+            }
+            for t in recent_tasks
+        ]
+    }
 
 @router.get("/{task_id}", response_model=ScrapingTaskResponse)
 def get_task_status(

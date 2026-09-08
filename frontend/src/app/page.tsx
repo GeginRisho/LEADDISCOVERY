@@ -4,41 +4,83 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { 
   Sparkles, ListCollapse, Database, Globe, ShieldX, Play, ArrowRight,
-  TrendingUp, Calendar, MapPin, Tag
+  TrendingUp, Calendar, MapPin, Tag, AlertCircle
 } from "lucide-react";
 import { api, ScrapingTask } from "@/lib/api";
 import { useToast } from "@/components/AppLayout";
 
+interface DashboardStats {
+  total_tasks: number;
+  total_websites_found: number;
+  total_crawled: number;
+  total_failed: number;
+  running_tasks: number;
+  completed_tasks: number;
+}
+
 export default function DashboardPage() {
   const { showToast } = useToast();
-  const [tasks, setTasks] = useState<ScrapingTask[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recentTasks, setRecentTasks] = useState<ScrapingTask[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadTasks() {
+    let isMounted = true;
+
+    async function loadDashboardData() {
       try {
-        const data = await api.getTasks();
-        setTasks(data);
-      } catch (err) {
-        showToast("Failed to load scraping tasks.", "error");
+        setLoading(true);
+        setError(null);
+        const data = await api.getDashboardOverview();
+        if (isMounted) {
+          setStats(data.stats);
+          setRecentTasks(data.recent_tasks || []);
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          setError("Unable to load dashboard statistics");
+          showToast("Unable to load dashboard statistics", "error");
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
-    loadTasks();
+
+    loadDashboardData();
+
+    return () => {
+      isMounted = false;
+    };
   }, [showToast]);
 
-  // Aggregate totals
-  const totalTasks = tasks.length;
-  const totalWebsitesFound = tasks.reduce((acc, t) => acc + t.websites_found, 0);
-  const totalCrawled = tasks.reduce((acc, t) => acc + t.websites_crawled, 0);
-  const totalFailed = tasks.reduce((acc, t) => acc + t.failed_count, 0);
-
-  const recentTasks = tasks.slice(0, 5);
+  const renderStatValue = (val: number | undefined) => {
+    if (loading || stats === null) {
+      return (
+        <div className="h-9 w-24 bg-gray-100 animate-pulse rounded-lg mt-2 flex items-center justify-center">
+          <span className="text-gray-300 font-mono tracking-widest text-xs">— — — —</span>
+        </div>
+      );
+    }
+    if (error) {
+      return <span className="text-xs text-red-500 font-bold mt-2 block">Unavailable</span>;
+    }
+    return <h3 className="text-3xl font-black text-gray-900 mt-2">{val ?? 0}</h3>;
+  };
 
   return (
     <div className="space-y-8">
       
+      {/* Error Notification Banner if backend is unavailable */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3 text-red-800 text-sm font-semibold animate-in fade-in-20">
+          <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
+          <span>Unable to load dashboard statistics. Please check your backend connection.</span>
+        </div>
+      )}
+
       {/* Welcome Banner - Renders Immediately */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white border border-gray-200 rounded-2xl p-6 md:p-8 shadow-sm">
         <div>
@@ -65,11 +107,7 @@ export default function DashboardPage() {
         <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-between shadow-sm">
           <div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Tasks Run</p>
-            {loading ? (
-              <div className="h-8 w-16 bg-gray-200 animate-pulse rounded mt-2"></div>
-            ) : (
-              <h3 className="text-3xl font-black text-gray-900 mt-2">{totalTasks}</h3>
-            )}
+            {renderStatValue(stats?.total_tasks)}
             <p className="text-[10px] text-orange-600 mt-1 flex items-center gap-1 font-semibold">
               <TrendingUp className="h-3 w-3" /> Historical sessions
             </p>
@@ -82,11 +120,7 @@ export default function DashboardPage() {
         <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-between shadow-sm">
           <div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Websites Identified</p>
-            {loading ? (
-              <div className="h-8 w-16 bg-gray-200 animate-pulse rounded mt-2"></div>
-            ) : (
-              <h3 className="text-3xl font-black text-gray-900 mt-2">{totalWebsitesFound}</h3>
-            )}
+            {renderStatValue(stats?.total_websites_found)}
             <p className="text-[10px] text-emerald-600 mt-1 flex items-center gap-1 font-semibold">
               <TrendingUp className="h-3 w-3" /> Official domains
             </p>
@@ -99,11 +133,7 @@ export default function DashboardPage() {
         <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-between shadow-sm">
           <div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Domains Crawled</p>
-            {loading ? (
-              <div className="h-8 w-16 bg-gray-200 animate-pulse rounded mt-2"></div>
-            ) : (
-              <h3 className="text-3xl font-black text-gray-900 mt-2">{totalCrawled}</h3>
-            )}
+            {renderStatValue(stats?.total_crawled)}
             <p className="text-[10px] text-blue-600 mt-1 flex items-center gap-1 font-semibold">
               <TrendingUp className="h-3 w-3" /> Deep contact crawls
             </p>
@@ -116,11 +146,7 @@ export default function DashboardPage() {
         <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-between shadow-sm">
           <div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Crawls Blocked/Failed</p>
-            {loading ? (
-              <div className="h-8 w-16 bg-gray-200 animate-pulse rounded mt-2"></div>
-            ) : (
-              <h3 className="text-3xl font-black text-gray-900 mt-2">{totalFailed}</h3>
-            )}
+            {renderStatValue(stats?.total_failed)}
             <p className="text-[10px] text-red-600 mt-1 flex items-center gap-1 font-semibold">
               Robots/Connection limits
             </p>
@@ -144,13 +170,15 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        {loading ? (
+        {loading || stats === null ? (
           <div className="space-y-3">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-20 bg-gray-100 animate-pulse rounded-xl"></div>
+              <div key={i} className="h-20 bg-gray-50 animate-pulse rounded-xl border border-gray-100 flex items-center px-6">
+                <span className="text-gray-300 font-mono tracking-widest text-xs">— — — — — — — —</span>
+              </div>
             ))}
           </div>
-        ) : totalTasks === 0 ? (
+        ) : stats.total_tasks === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="h-16 w-16 rounded-full bg-orange-50 border border-orange-100 flex items-center justify-center mb-4">
               <ListCollapse className="h-8 w-8 text-orange-500" />
@@ -229,10 +257,10 @@ export default function DashboardPage() {
                         Websites: <span className="text-gray-900">{task.websites_found}</span>
                       </div>
                       <div className="bg-white px-3 py-1.5 rounded-lg border border-gray-200 text-[11px] font-bold text-gray-600">
-                        Emails: <span className="text-gray-900">{task.email_count}</span>
+                        Emails: <span className="text-gray-900">{task.email_count || 0}</span>
                       </div>
                       <div className="bg-white px-3 py-1.5 rounded-lg border border-gray-200 text-[11px] font-bold text-gray-600">
-                        Phones: <span className="text-gray-900">{task.phone_count}</span>
+                        Phones: <span className="text-gray-900">{task.phone_count || 0}</span>
                       </div>
                     </div>
 

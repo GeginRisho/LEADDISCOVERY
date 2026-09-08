@@ -36,13 +36,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   
-  const [user, setUser] = useState<UserType | null>(() => api.getCachedUser());
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("token") ? "authenticated" : "unauthenticated";
-    }
-    return "loading";
-  });
+  const [mounted, setMounted] = useState(false);
+  const [user, setUser] = useState<UserType | null>(null);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -57,14 +53,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [isServerConnecting, setIsServerConnecting] = useState(false);
 
   useEffect(() => {
-    let isMounted = true;
+    setMounted(true);
+    let isCurrent = true;
 
     async function initializeAuth() {
       const isAuthRoute = pathname === "/login" || pathname === "/register";
       const hasToken = typeof window !== "undefined" && !!localStorage.getItem("token");
 
       if (!hasToken) {
-        if (isMounted) {
+        if (isCurrent) {
           setUser(null);
           setAuthStatus("unauthenticated");
           if (!isAuthRoute) {
@@ -74,10 +71,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Optimistic authentication: set authenticated immediately
-      if (isMounted) {
+      // Optimistic authentication from cached user after mount
+      const cached = api.getCachedUser();
+      if (isCurrent) {
         setAuthStatus("authenticated");
-        const cached = api.getCachedUser();
         if (cached) {
           setUser(cached);
         }
@@ -86,12 +83,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       // Non-blocking background verification with auto-dismiss so UI is never stuck
       setIsServerConnecting(true);
       const dismissTimer = setTimeout(() => {
-        if (isMounted) setIsServerConnecting(false);
+        if (isCurrent) setIsServerConnecting(false);
       }, 3500);
 
       try {
         const userData = await api.getMe();
-        if (isMounted) {
+        if (isCurrent) {
           setUser(userData);
           setIsServerConnecting(false);
           clearTimeout(dismissTimer);
@@ -100,7 +97,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           }
         }
       } catch (err: any) {
-        if (isMounted) {
+        if (isCurrent) {
           setIsServerConnecting(false);
           clearTimeout(dismissTimer);
           const stillHasToken = typeof window !== "undefined" && !!localStorage.getItem("token");
@@ -118,7 +115,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     initializeAuth();
 
     return () => {
-      isMounted = false;
+      isCurrent = false;
     };
   }, [pathname, router]);
 
@@ -139,7 +136,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const adminOrgLink = { href: "/organizations", label: "Master Organizations", icon: Building2 };
   const settingsLink = { href: "/settings", label: "Settings", icon: Settings };
 
-  const navLinks = user?.role === "ADMIN"
+  // DETERMINISTIC NAVIGATION:
+  // On SSR and initial client hydration render (!mounted), ALWAYS render baseNavLinks + settingsLink.
+  // Once mounted on client, if user is admin, include adminOrgLink.
+  const navLinks = (mounted && user?.role === "ADMIN")
     ? [...baseNavLinks, adminOrgLink, settingsLink]
     : [...baseNavLinks, settingsLink];
 
@@ -205,7 +205,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               );
             })}
 
-            {user?.role === "ADMIN" && (
+            {mounted && user?.role === "ADMIN" && (
               <div className="pt-4 mt-4 border-t border-gray-100">
                 <div className="text-[10px] font-bold text-orange-600 uppercase tracking-wider px-3 mb-2 flex items-center gap-1.5">
                   <ShieldCheck className="h-3.5 w-3.5" />
@@ -239,7 +239,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <User className="h-4 w-4 text-orange-600" />
               </div>
               <div className="truncate flex-1">
-                <p className="text-xs font-bold truncate text-gray-800">{user?.email || "User"}</p>
+                <p className="text-xs font-bold truncate text-gray-800">{mounted && user?.email ? user.email : "User"}</p>
                 <p className="text-[10px] text-gray-500 font-medium">Authorized Account</p>
               </div>
             </div>
@@ -298,7 +298,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   );
                 })}
 
-                {user?.role === "ADMIN" && (
+                {mounted && user?.role === "ADMIN" && (
                   <div className="pt-4 mt-4 border-t border-gray-100 space-y-1">
                     <div className="text-[10px] font-bold text-orange-600 uppercase tracking-wider px-3 mb-1 flex items-center gap-1.5">
                       <ShieldCheck className="h-3.5 w-3.5" />
@@ -328,7 +328,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </nav>
 
               <div className="p-4 border-t border-gray-200">
-                <p className="text-xs text-gray-500 mb-2 truncate px-2 font-medium">{user?.email}</p>
+                <p className="text-xs text-gray-500 mb-2 truncate px-2 font-medium">{mounted && user?.email ? user.email : "User"}</p>
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 transition-all"
