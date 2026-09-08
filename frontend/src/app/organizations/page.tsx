@@ -605,10 +605,11 @@ export default function MasterOrganizationsPage() {
       </div>
 
       {/* ORGANIZATIONS LIST */}
-      {loading ? (
-        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-2xl border border-gray-200 min-h-[300px]">
-          <Loader2 className="h-8 w-8 text-orange-500 animate-spin mb-3" />
-          <p className="text-xs font-bold text-gray-500">Loading master organizations...</p>
+      {loading && organizations.length === 0 ? (
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs h-32 animate-pulse"></div>
+          ))}
         </div>
       ) : organizations.length === 0 ? (
         <div className="p-12 text-center bg-white rounded-2xl border border-gray-200">

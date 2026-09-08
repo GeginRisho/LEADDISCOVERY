@@ -113,9 +113,10 @@ export default function HistoryPage() {
 
       {/* History List Table */}
       {loading && filteredTasks.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-2xl py-12 flex flex-col items-center justify-center text-center shadow-xs">
-          <Loader2 className="h-8 w-8 text-orange-500 animate-spin mb-2" />
-          <p className="text-xs font-bold text-gray-500">Loading scraping history...</p>
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="p-5 bg-white border border-gray-200 rounded-2xl shadow-xs animate-pulse h-28"></div>
+          ))}
         </div>
       ) : filteredTasks.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-2xl py-16 flex flex-col items-center justify-center text-center shadow-xs">

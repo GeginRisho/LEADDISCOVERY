@@ -37,65 +37,23 @@ export default function AdminTasksPage() {
     return matchesSearch && matchesStatus;
   });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 text-orange-500 animate-spin" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <ListFilter className="h-6 w-6 text-orange-500" /> System-Wide Scraping Tasks
-          </h1>
-          <p className="text-sm text-gray-500">Monitor all scraping tasks initialized across users.</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tasks by user, keyword, location..."
-            className="bg-white border border-gray-200 text-xs rounded-xl px-3.5 py-2.5 w-64 focus:outline-none focus:border-orange-500"
-          />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-white border border-gray-200 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-orange-500"
-          >
-            <option value="ALL">All Statuses</option>
-            <option value="COMPLETED">Completed</option>
-            <option value="RUNNING">Running</option>
-            <option value="PENDING">Pending</option>
-            <option value="FAILED">Failed</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left text-sm text-gray-600">
-            <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-4">Task ID</th>
-                <th className="px-6 py-4">User</th>
-                <th className="px-6 py-4">Keyword & Location</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Discovered</th>
-                <th className="px-6 py-4">Crawled</th>
-                <th className="px-6 py-4">Leads Created</th>
-                <th className="px-6 py-4">Created Date</th>
-                <th className="px-6 py-4 text-right">View</th>
-              </tr>
-            </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredTasks.map((t) => (
+              {loading && filteredTasks.length === 0 ? (
+                [...Array(4)].map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-32"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-36"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-12"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-12"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-12"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-8 ml-auto"></div></td>
+                  </tr>
+                ))
+              ) : (
+                filteredTasks.map((t) => (
                 <tr key={t.id} className="hover:bg-gray-50/80 transition-colors">
                   <td className="px-6 py-4 font-mono text-xs font-bold text-gray-900">{t.public_task_id}</td>
                   <td className="px-6 py-4 font-medium text-gray-800">{t.user_email}</td>

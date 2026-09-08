@@ -51,11 +51,15 @@ export default function AdminOrganizationDetailPage() {
     }
   };
 
-  if (loading) {
+  if (loading && !org) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] text-gray-500">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500 mb-2" />
-        <p className="text-sm font-medium">Loading organization details...</p>
+      <div className="space-y-6 max-w-7xl mx-auto px-4 md:px-0">
+        <div className="flex items-center justify-between">
+          <Link href="/admin/organizations" className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+            <ArrowLeft className="h-4 w-4" /> Back to Master Organizations
+          </Link>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs h-40 animate-pulse"></div>
       </div>
     );
   }

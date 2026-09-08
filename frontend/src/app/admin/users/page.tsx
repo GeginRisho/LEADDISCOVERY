@@ -36,44 +36,23 @@ export default function AdminUsersPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 text-orange-500 animate-spin" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <Users className="h-6 w-6 text-orange-500" /> User Accounts & Access Control
-          </h1>
-          <p className="text-sm text-gray-500">Manage user roles, account statuses, task counts, and lead metrics.</p>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left text-sm text-gray-600">
-            <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-4">User ID</th>
-                <th className="px-6 py-4">Email</th>
-                <th className="px-6 py-4">Role</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Tasks</th>
-                <th className="px-6 py-4">Leads</th>
-                <th className="px-6 py-4">Created Date</th>
-                <th className="px-6 py-4">Last Activity</th>
-                <th className="px-6 py-4 text-right">Actions</th>
-              </tr>
-            </thead>
             <tbody className="divide-y divide-gray-100">
-              {users.map((u) => (
+              {loading && users.length === 0 ? (
+                [...Array(4)].map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-36"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                    <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
+                  </tr>
+                ))
+              ) : (
+                users.map((u) => (
                 <tr key={u.id} className="hover:bg-gray-50/80 transition-colors">
                   <td className="px-6 py-4 font-mono text-xs font-bold text-gray-900">{u.user_id_display || `USER-${u.id}`}</td>
                   <td className="px-6 py-4 font-semibold text-gray-900">

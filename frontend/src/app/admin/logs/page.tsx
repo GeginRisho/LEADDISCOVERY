@@ -73,23 +73,28 @@ export default function AdminLogsPage() {
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center p-12">
-            <Loader2 className="h-8 w-8 text-orange-500 animate-spin" />
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs font-mono">
-              <thead className="bg-gray-50 text-[11px] uppercase font-bold text-gray-500 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3.5">Timestamp</th>
-                  <th className="px-6 py-3.5">Task ID</th>
-                  <th className="px-6 py-3.5">Event</th>
-                  <th className="px-6 py-3.5">Message Log</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 font-mono">
-                {logs.map((log) => (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs font-mono">
+            <thead className="bg-gray-50 text-[11px] uppercase font-bold text-gray-500 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-3.5">Timestamp</th>
+                <th className="px-6 py-3.5">Task ID</th>
+                <th className="px-6 py-3.5">Event</th>
+                <th className="px-6 py-3.5">Message Log</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 font-mono">
+              {loading && logs.length === 0 ? (
+                [...Array(4)].map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    <td className="px-6 py-3"><div className="h-3 bg-gray-200 rounded w-16"></div></td>
+                    <td className="px-6 py-3"><div className="h-3 bg-gray-200 rounded w-20"></div></td>
+                    <td className="px-6 py-3"><div className="h-3 bg-gray-200 rounded w-24"></div></td>
+                    <td className="px-6 py-3"><div className="h-3 bg-gray-200 rounded w-64"></div></td>
+                  </tr>
+                ))
+              ) : (
+                logs.map((log) => (
                   <tr key={log.id} className="hover:bg-gray-50/80 transition-colors">
                     <td className="px-6 py-3 text-gray-500 whitespace-nowrap">
                       {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -106,8 +111,9 @@ export default function AdminLogsPage() {
                     </td>
                     <td className="px-6 py-3 text-gray-800 break-words">{log.message}</td>
                   </tr>
-                ))}
-                {logs.length === 0 && (
+                ))
+              )}
+                {logs.length === 0 && !loading && (
                   <tr>
                     <td colSpan={4} className="text-center py-8 text-xs text-gray-400 font-sans">
                       No scraping logs match the specified criteria.
@@ -117,7 +123,7 @@ export default function AdminLogsPage() {
               </tbody>
             </table>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

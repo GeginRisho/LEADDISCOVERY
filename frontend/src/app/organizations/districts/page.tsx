@@ -96,10 +96,11 @@ export default function TamilNaduDistrictDashboardPage() {
       </div>
 
       {/* 38 DISTRICT CARDS GRID */}
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3">
-          <Loader2 className="h-8 w-8 text-orange-500 animate-spin" />
-          <p className="text-xs font-bold text-gray-500">Aggregating district database statistics...</p>
+      {loading && filteredDistricts.length === 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="bg-white border border-gray-200 rounded-2xl p-5 h-44 animate-pulse"></div>
+          ))}
         </div>
       ) : filteredDistricts.length === 0 ? (
         <div className="text-center py-16 bg-white border border-gray-200 rounded-2xl">
