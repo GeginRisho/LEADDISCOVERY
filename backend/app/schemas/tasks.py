@@ -16,12 +16,17 @@ class ScrapingTaskCreate(BaseModel):
         default=[],
         description="Fields required for a lead to qualify in final results"
     )
+    client_request_id: Optional[str] = Field(
+        default=None,
+        description="Optional client idempotency identifier to prevent duplicate submissions"
+    )
 
 from app.schemas.leads import OrganizationLeadResponse
 
 class ScrapingTaskResponse(BaseModel):
     id: int
     public_task_id: str
+    client_request_id: Optional[str] = None
     user_id: Optional[int] = None
     user_email: Optional[str] = "System/Guest"
     location: str

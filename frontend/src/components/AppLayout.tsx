@@ -8,7 +8,7 @@ import {
   Menu, X, ShieldAlert, Sparkles, User, CheckCircle, AlertCircle, Loader2,
   ShieldCheck, Users, ListFilter, FileText, Activity, Building2, Map
 } from "lucide-react";
-import { api, User as UserType } from "@/lib/api";
+import { api, User as UserType, backendStatusManager, BackendStatus } from "@/lib/api";
 
 // 1. Toast Provider Setup
 interface Toast {
@@ -19,6 +19,7 @@ interface Toast {
 
 interface ToastContextType {
   showToast: (message: string, type?: "success" | "error" | "info") => void;
+  backendStatus: BackendStatus;
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
@@ -41,16 +42,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>({ isWaking: false, message: "" });
+
+  useEffect(() => {
+    const unsub = backendStatusManager.subscribe((st) => {
+      setBackendStatus(st);
+    });
+    return () => unsub();
+  }, []);
 
   const showToast = React.useCallback((message: string, type: "success" | "error" | "info" = "success") => {
     setToasts((prev) => {
+      const isWakingMsg = message.toLowerCase().includes("waking up") || message.toLowerCase().includes("unavailable");
+      if (isWakingMsg && prev.some((t) => t.message.toLowerCase().includes("waking up") || t.message.toLowerCase().includes("unavailable"))) {
+        return prev;
+      }
       if (prev.some((t) => t.message === message && t.type === type)) {
         return prev;
       }
       const id = Math.random().toString(36).substring(2, 9);
       setTimeout(() => {
         setToasts((curr) => curr.filter((t) => t.id !== id));
-      }, 4000);
+      }, 5000);
       return [...prev, { id, message, type }];
     });
   }, []);
@@ -164,7 +177,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (isAuthPage) {
     return (
-      <ToastContext.Provider value={{ showToast }}>
+      <ToastContext.Provider value={{ showToast, backendStatus }}>
         <div className="min-h-screen bg-[#FFFDF9] flex items-center justify-center p-4 relative overflow-hidden">
           {/* Subtle light orange background gradients */}
           <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-orange-100/60 blur-3xl pointer-events-none"></div>
@@ -179,7 +192,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext.Provider value={{ showToast, backendStatus }}>
       <div className="min-h-screen bg-[#FFFDF9] text-gray-900 flex overflow-hidden">
         
         {/* DESKTOP SIDEBAR */}
@@ -385,6 +398,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           </header>
+
+          {/* Render Backend Cold Start Non-blocking Banner */}
+          {backendStatus.isWaking && (
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-200 px-6 py-2.5 flex items-center justify-between text-xs font-semibold text-amber-900 animate-in fade-in-20 z-10">
+              <div className="flex items-center gap-2.5">
+                <Loader2 className="h-4 w-4 text-orange-500 animate-spin flex-shrink-0" />
+                <span>{backendStatus.message || "Server is waking up. Your data is safe. Retrying automatically..."}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="hidden sm:inline-flex items-center text-[10px] font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-200">
+                  Render Free Container Spin-up
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* PAGE INNER CONTENT CONTAINER */}
           <main className="flex-1 overflow-y-auto p-6 md:p-8 z-10 bg-[#FFFDF9]">

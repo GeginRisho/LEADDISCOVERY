@@ -8,41 +8,71 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 
+import { useToast } from "@/components/AppLayout";
+
 export default function AdminDashboardPage() {
+  const { backendStatus } = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAuthError, setIsAuthError] = useState(false);
+  const [isWaking, setIsWaking] = useState(false);
   const [overview, setOverview] = useState<any>(null);
   const [recentTasks, setRecentTasks] = useState<any[]>([]);
 
-  useEffect(() => {
-    async function loadAdminData() {
-      try {
-        setLoading(true);
-        const [statsResult, tasksResult] = await Promise.allSettled([
-          api.getAdminOverview(),
-          api.getAdminTasks()
-        ]);
+  const loadAdminData = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      setIsAuthError(false);
+      const [statsResult, tasksResult] = await Promise.allSettled([
+        api.getAdminOverview(),
+        api.getAdminTasks()
+      ]);
 
-        if (statsResult.status === "fulfilled") {
-          setOverview(statsResult.value);
-        }
-        if (tasksResult.status === "fulfilled") {
-          setRecentTasks(tasksResult.value.slice(0, 5));
-        }
-
-        if (statsResult.status === "rejected" && tasksResult.status === "rejected") {
-          setError("Failed to load admin metrics.");
-        }
-      } catch (err: any) {
-        setError(err.message || "Failed to load admin overview data.");
-      } finally {
-        setLoading(false);
+      if (statsResult.status === "fulfilled") {
+        setOverview(statsResult.value);
       }
+      if (tasksResult.status === "fulfilled") {
+        setRecentTasks(tasksResult.value.slice(0, 5));
+      }
+
+      if (statsResult.status === "rejected" && tasksResult.status === "rejected") {
+        const reason: any = statsResult.reason;
+        if (reason?.status === 403 || reason?.code === "AUTH_ERROR") {
+          setIsAuthError(true);
+          setError("Access denied. System Administrator privileges required.");
+        } else {
+          const waking = reason?.isBackendWaking || reason?.code === "BACKEND_WAKING" || reason?.message?.includes("waking up");
+          setIsWaking(!!waking);
+          setError(waking ? "Server is waking up. Your data is safe. Retrying automatically..." : "Failed to load admin metrics.");
+        }
+      }
+    } catch (err: any) {
+      if (err?.status === 403 || err?.code === "AUTH_ERROR") {
+        setIsAuthError(true);
+        setError("Access denied. System Administrator privileges required.");
+      } else {
+        const waking = err?.isBackendWaking || err?.code === "BACKEND_WAKING" || err?.message?.includes("waking up");
+        setIsWaking(!!waking);
+        setError(waking ? "Server is waking up. Your data is safe. Retrying automatically..." : (err.message || "Failed to load admin metrics."));
+      }
+    } finally {
+      setLoading(false);
     }
-    loadAdminData();
   }, []);
 
-  if (error) {
+  useEffect(() => {
+    loadAdminData();
+  }, [loadAdminData]);
+
+  // Auto-retry when backend finishes waking
+  useEffect(() => {
+    if (error && !isAuthError && !backendStatus.isWaking && !loading) {
+      loadAdminData();
+    }
+  }, [backendStatus.isWaking, error, isAuthError, loading, loadAdminData]);
+
+  if (isAuthError) {
     return (
       <div className="p-6 bg-red-50 border border-red-200 rounded-2xl text-red-700 max-w-xl mx-auto my-8">
         <h3 className="font-bold text-base mb-1">Access Error</h3>
@@ -95,6 +125,22 @@ export default function AdminDashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* Non-blocking Waking / Error Notice */}
+      {error && !isAuthError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 animate-in fade-in-20">
+          <div className="flex items-center gap-2.5 text-xs font-semibold">
+            <Loader2 className="h-4 w-4 text-orange-500 animate-spin flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={() => loadAdminData()}
+            className="self-start sm:self-auto px-3 py-1.5 bg-white border border-amber-300 text-amber-900 rounded-xl text-xs font-bold hover:bg-amber-100/50 transition-all shadow-xs"
+          >
+            Retry Metrics
+          </button>
+        </div>
+      )}
 
       {/* Grid Stats — 2-col mobile, 4-col desktop */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">

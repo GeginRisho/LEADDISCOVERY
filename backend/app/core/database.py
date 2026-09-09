@@ -115,6 +115,8 @@ def migrate_schema(eng):
         "CREATE INDEX IF NOT EXISTS idx_org_district_city ON organizations(district, city)",
         "CREATE INDEX IF NOT EXISTS idx_org_verification ON organizations(admin_verified, confidence)",
         "CREATE INDEX IF NOT EXISTS idx_tasks_user_status ON scraping_tasks(user_id, status)",
+        "ALTER TABLE scraping_tasks ADD COLUMN client_request_id VARCHAR(100) NULL",
+        "CREATE INDEX IF NOT EXISTS idx_tasks_client_req ON scraping_tasks(client_request_id)",
     ]
     with eng.connect() as conn:
         for stmt in statements:

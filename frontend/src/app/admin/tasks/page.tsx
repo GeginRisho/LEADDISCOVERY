@@ -5,26 +5,48 @@ import Link from "next/link";
 import { ListFilter, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
 
+import { useToast } from "@/components/AppLayout";
+
 export default function AdminTasksPage() {
+  const { showToast, backendStatus } = useToast();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isWaking, setIsWaking] = useState(false);
   const [tasks, setTasks] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
 
-  useEffect(() => {
-    async function loadTasks() {
-      try {
-        setLoading(true);
-        const data = await api.getAdminTasks();
-        setTasks(data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+  const loadTasks = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api.getAdminTasks();
+      setTasks(data);
+      setError(null);
+      setIsWaking(false);
+    } catch (err: any) {
+      const waking = err?.isBackendWaking || err?.code === "BACKEND_WAKING" || err?.message?.includes("waking up");
+      setIsWaking(!!waking);
+      const msg = waking 
+        ? "Server is waking up. Your data is safe. Retrying automatically..." 
+        : (err.message || "Failed to load system tasks.");
+      setError(msg);
+      showToast(msg, waking ? "info" : "error");
+    } finally {
+      setLoading(false);
     }
+  }, [showToast]);
+
+  useEffect(() => {
     loadTasks();
-  }, []);
+  }, [loadTasks]);
+
+  // Auto-retry when backend finishes waking
+  useEffect(() => {
+    if (error && !backendStatus.isWaking && !loading) {
+      loadTasks();
+    }
+  }, [backendStatus.isWaking, error, loading, loadTasks]);
 
   const filteredTasks = tasks.filter((t) => {
     const query = search.toLowerCase();
@@ -85,7 +107,7 @@ export default function AdminTasksPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {loading && filteredTasks.length === 0 ? (
+              {loading && tasks.length === 0 ? (
                 [...Array(4)].map((_, i) => (
                   <tr key={i} className="animate-pulse">
                     <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
@@ -99,6 +121,31 @@ export default function AdminTasksPage() {
                     <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-8 ml-auto"></div></td>
                   </tr>
                 ))
+              ) : error ? (
+                <tr>
+                  <td colSpan={9} className="px-6 py-12 text-center">
+                    <p className="font-bold text-gray-900 text-sm">{isWaking ? "Server is waking up" : "Failed to load admin tasks"}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{error}</p>
+                    <button
+                      onClick={() => loadTasks()}
+                      className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-bold hover:bg-gray-50 shadow-xs"
+                    >
+                      Retry Loading Tasks
+                    </button>
+                  </td>
+                </tr>
+              ) : tasks.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-6 py-12 text-center text-gray-400 font-semibold text-xs">
+                    No system tasks found.
+                  </td>
+                </tr>
+              ) : filteredTasks.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-6 py-12 text-center text-gray-400 font-semibold text-xs">
+                    No tasks match query filters.
+                  </td>
+                </tr>
               ) : (
                 filteredTasks.map((t) => (
                   <tr key={t.id} className="hover:bg-gray-50/80 transition-colors">

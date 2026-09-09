@@ -13,9 +13,11 @@ import { useToast } from "@/components/AppLayout";
 
 export default function MasterOrganizationsPage() {
   const router = useRouter();
-  const { showToast } = useToast();
+  const { showToast, backendStatus } = useToast();
 
   const [accessDenied, setAccessDenied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isWaking, setIsWaking] = useState(false);
 
   const [stats, setStats] = useState<{
     total_organizations: number;
@@ -141,6 +143,7 @@ export default function MasterOrganizationsPage() {
   const fetchOrgs = async () => {
     try {
       setLoading(true);
+      setError(null);
       const res = await api.getOrganizations({
         district: selectedDistrict,
         category: selectedCategory,
@@ -155,9 +158,17 @@ export default function MasterOrganizationsPage() {
       setOrganizations(res.organizations);
       setTotal(res.total);
       setPages(res.pages);
+      setError(null);
+      setIsWaking(false);
     } catch (err: any) {
       if (!checkAccessError(err)) {
-        showToast(err.message || "Failed to load master organizations.", "error");
+        const waking = err?.isBackendWaking || err?.code === "BACKEND_WAKING" || err?.message?.includes("waking up");
+        setIsWaking(!!waking);
+        const msg = waking 
+          ? "Server is waking up. Your data is safe. Retrying automatically..."
+          : (err.message || "Failed to load master organizations.");
+        setError(msg);
+        showToast(msg, waking ? "info" : "error");
       }
     } finally {
       setLoading(false);
@@ -168,6 +179,7 @@ export default function MasterOrganizationsPage() {
     let isMounted = true;
     const loadAllData = async () => {
       setLoading(true);
+      setError(null);
       await Promise.allSettled([
         api.getOrganizationSummaryStats().then(s => { if (isMounted) setStats(s); }).catch(err => checkAccessError(err)),
         api.getDistrictStats().then(dists => { if (isMounted) setDistrictsList(dists.map(d => d.district_name)); }).catch(err => checkAccessError(err)),
@@ -186,10 +198,18 @@ export default function MasterOrganizationsPage() {
             setOrganizations(res.organizations);
             setTotal(res.total);
             setPages(res.pages);
+            setError(null);
+            setIsWaking(false);
           }
         }).catch(err => {
           if (isMounted && !checkAccessError(err)) {
-            showToast(err.message || "Failed to load master organizations.", "error");
+            const waking = err?.isBackendWaking || err?.code === "BACKEND_WAKING" || err?.message?.includes("waking up");
+            setIsWaking(!!waking);
+            const msg = waking 
+              ? "Server is waking up. Your data is safe. Retrying automatically..."
+              : (err.message || "Failed to load master organizations.");
+            setError(msg);
+            showToast(msg, waking ? "info" : "error");
           }
         })
       ]);
@@ -199,6 +219,13 @@ export default function MasterOrganizationsPage() {
     loadAllData();
     return () => { isMounted = false; };
   }, [selectedDistrict, selectedCategory, selectedCountry, selectedState, selectedCity, selectedVerificationStatus, search, page, limit]);
+
+  // Auto-retry when backend finishes cold starting
+  useEffect(() => {
+    if (error && !backendStatus.isWaking && !loading) {
+      fetchOrgs();
+    }
+  }, [backendStatus.isWaking]);
 
   const openAddModal = () => {
     setEditingOrgId(null);
@@ -477,7 +504,13 @@ export default function MasterOrganizationsPage() {
       </div>
 
       {/* STATS OVERVIEW CARDS */}
-      {stats && (
+      {loading && !stats ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="bg-white p-4 rounded-xl border border-gray-200 animate-pulse h-16"></div>
+          ))}
+        </div>
+      ) : stats && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
           <div className="bg-white p-4 rounded-xl border border-gray-200">
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Orgs</p>
@@ -610,6 +643,26 @@ export default function MasterOrganizationsPage() {
           {[...Array(3)].map((_, i) => (
             <div key={i} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs h-32 animate-pulse"></div>
           ))}
+        </div>
+      ) : error ? (
+        <div className="p-10 text-center bg-white rounded-2xl border border-amber-200 shadow-xs">
+          <div className="h-12 w-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mx-auto mb-3">
+            <Loader2 className="h-6 w-6 animate-spin text-amber-600" />
+          </div>
+          <h3 className="text-sm font-bold text-gray-900">
+            {isWaking ? "Server is waking up" : "Unable to load organizations"}
+          </h3>
+          <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
+            {isWaking 
+              ? "Your data is safe. The Render service is waking up and we are retrying automatically." 
+              : error}
+          </p>
+          <button
+            onClick={() => fetchOrgs()}
+            className="mt-4 inline-flex items-center gap-2 bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs active:scale-[0.98]"
+          >
+            <Loader2 className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Retry Loading Organizations
+          </button>
         </div>
       ) : organizations.length === 0 ? (
         <div className="p-12 text-center bg-white rounded-2xl border border-gray-200">

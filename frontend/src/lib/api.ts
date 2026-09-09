@@ -128,6 +128,104 @@ export interface Lead {
   social_links: SocialLink[];
 }
 
+export type ApiErrorCode =
+  | "AUTH_ERROR"
+  | "NETWORK_ERROR"
+  | "BACKEND_WAKING"
+  | "SERVER_ERROR"
+  | "NOT_FOUND"
+  | "VALIDATION_ERROR"
+  | "EMPTY_SUCCESS";
+
+export class ApiError extends Error {
+  public code: ApiErrorCode;
+  public status: number;
+  public isBackendWaking: boolean;
+  public details?: any;
+
+  constructor(message: string, code: ApiErrorCode, status: number = 0, details?: any) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+    this.status = status;
+    this.isBackendWaking = code === "BACKEND_WAKING";
+    this.details = details;
+  }
+}
+
+export interface BackendStatus {
+  isWaking: boolean;
+  message: string;
+  retryAttempt?: number;
+  lastChecked?: number;
+}
+
+type BackendStatusListener = (status: BackendStatus) => void;
+
+class BackendStatusManager {
+  private listeners: Set<BackendStatusListener> = new Set();
+  private currentStatus: BackendStatus = {
+    isWaking: false,
+    message: ""
+  };
+  private toastBroadcasted: boolean = false;
+
+  public subscribe(listener: BackendStatusListener): () => void {
+    this.listeners.add(listener);
+    listener(this.currentStatus);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  public notifyWaking(message: string = "Server is waking up. Your data is safe. We'll retry automatically.", retryAttempt?: number): boolean {
+    this.currentStatus = {
+      isWaking: true,
+      message,
+      retryAttempt,
+      lastChecked: Date.now()
+    };
+    this.listeners.forEach((fn) => {
+      try { fn(this.currentStatus); } catch {}
+    });
+
+    if (!this.toastBroadcasted) {
+      this.toastBroadcasted = true;
+      return true; // True only for the first waking event
+    }
+    return false;
+  }
+
+  public notifyAwake() {
+    if (this.currentStatus.isWaking) {
+      this.currentStatus = {
+        isWaking: false,
+        message: "",
+        lastChecked: Date.now()
+      };
+      this.toastBroadcasted = false;
+      this.listeners.forEach((fn) => {
+        try { fn(this.currentStatus); } catch {}
+      });
+    }
+  }
+
+  public getStatus(): BackendStatus {
+    return this.currentStatus;
+  }
+
+  public resetToastBroadcast() {
+    this.toastBroadcasted = false;
+  }
+}
+
+export const backendStatusManager = new BackendStatusManager();
+
+export interface ApiRequestOptions extends RequestInit {
+  maxRetries?: number;
+  retryOnWaking?: boolean;
+}
+
 class ApiClient {
   private inFlightRequests: Map<string, Promise<any>> = new Map();
   private memoryCache: Map<string, { data: any; timestamp: number }> = new Map();
@@ -190,6 +288,20 @@ class ApiClient {
     }
   }
 
+  public async checkHealth(): Promise<boolean> {
+    try {
+      const base = getApiBase();
+      const res = await fetch(`${base}/health`, { cache: "no-store" });
+      if (res.ok) {
+        backendStatusManager.notifyAwake();
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   private async cachedGet<T>(endpoint: string, ttlMs: number): Promise<T> {
     const cached = this.memoryCache.get(endpoint);
     const now = Date.now();
@@ -223,7 +335,7 @@ class ApiClient {
     return inFlight;
   }
 
-  private async request(endpoint: string, options: RequestInit = {}): Promise<any> {
+  public async request(endpoint: string, options: ApiRequestOptions = {}): Promise<any> {
     const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
     const base = getApiBase();
     const url = `${base}${cleanEndpoint}`;
@@ -240,66 +352,148 @@ class ApiClient {
     }
 
     const isGet = !options.method || options.method.toUpperCase() === "GET";
-    const timeoutMs = isGet ? 12_000 : 25_000;
+    const retryOnWaking = options.retryOnWaking ?? isGet;
+    // Bounded retry limits: 3 for GET, user-specified or 0 for POST
+    const maxRetries = options.maxRetries ?? (isGet ? 3 : 0);
+    // Timeout per attempt: 18s is sufficient for Render containers
+    const timeoutMs = isGet ? 18_000 : 25_000;
 
-    let response: Response;
-    const fetchWithTimeout = async (attempt: number): Promise<Response> => {
+    // Bounded exponential backoff sequence: 1.5s -> 3.5s -> 7s
+    const backoffDelays = [1500, 3500, 7000];
+
+    let lastError: any = null;
+
+    for (let attempt = 1; attempt <= (retryOnWaking ? maxRetries + 1 : 1); attempt++) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
-        const res = await fetch(url, {
+        const response = await fetch(url, {
           ...options,
           headers,
           signal: controller.signal
         });
         clearTimeout(timer);
-        return res;
+
+        // 1. Auth failure: 401 Unauthorized
+        if (response.status === 401) {
+          this.removeToken();
+          if (typeof window !== "undefined" && window.location.pathname !== "/login" && window.location.pathname !== "/register") {
+            window.location.href = "/login";
+          }
+          throw new ApiError("Session expired. Please sign in again.", "AUTH_ERROR", 401);
+        }
+
+        // 2. Render cold start / unavailable responses: 502, 503, 504
+        if (response.status === 502 || response.status === 503 || response.status === 504) {
+          const wakingErr = new ApiError("Server is waking up. Your data is safe.", "BACKEND_WAKING", response.status);
+          if (retryOnWaking && attempt <= maxRetries) {
+            backendStatusManager.notifyWaking("Server is waking up. Your data is safe. Retrying automatically...", attempt);
+            const delay = backoffDelays[attempt - 1] || 5000;
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            lastError = wakingErr;
+            continue;
+          }
+          backendStatusManager.notifyWaking("Server is waking up. Please retry in a moment.", attempt);
+          throw wakingErr;
+        }
+
+        // 3. Permission denied: 403 Forbidden
+        if (response.status === 403) {
+          let detail = "Access denied. Admin privileges required.";
+          try {
+            const errData = await response.json();
+            detail = errData.detail || detail;
+          } catch {}
+          throw new ApiError(detail, "AUTH_ERROR", 403);
+        }
+
+        // 4. Not found: 404
+        if (response.status === 404) {
+          let detail = "Resource not found.";
+          try {
+            const errData = await response.json();
+            detail = errData.detail || detail;
+          } catch {}
+          throw new ApiError(detail, "NOT_FOUND", 404);
+        }
+
+        // 5. Validation error: 422
+        if (response.status === 422) {
+          let detail = "Invalid parameters.";
+          try {
+            const errData = await response.json();
+            detail = errData.detail || detail;
+          } catch {}
+          throw new ApiError(detail, "VALIDATION_ERROR", 422);
+        }
+
+        // 6. Server error: 500
+        if (response.status === 500) {
+          let detail = "Server error occurred. Please try again.";
+          try {
+            const errData = await response.json();
+            detail = errData.detail || detail;
+          } catch {}
+          throw new ApiError(detail, "SERVER_ERROR", 500);
+        }
+
+        // Generic non-2xx
+        if (!response.ok) {
+          let errorDetail = "An unexpected error occurred.";
+          try {
+            const errorData = await response.json();
+            errorDetail = errorData.detail || errorDetail;
+          } catch {}
+          throw new ApiError(errorDetail, "SERVER_ERROR", response.status);
+        }
+
+        // Request succeeded! Notify status manager that backend is awake
+        backendStatusManager.notifyAwake();
+
+        // Handle file streams/blobs (e.g. downloads)
+        const contentType = response.headers.get("content-type");
+        if (contentType && (contentType.includes("csv") || contentType.includes("sheet") || contentType.includes("excel") || contentType.includes("octet-stream") || contentType.includes("application/vnd"))) {
+          return response.blob();
+        }
+
+        return response.json();
+
       } catch (err: any) {
         clearTimeout(timer);
+
+        // If it's already an ApiError from non-retriable statuses (401, 403, 404, 422, 500), rethrow immediately
+        if (err instanceof ApiError && err.code !== "BACKEND_WAKING") {
+          throw err;
+        }
+
         const isAbort = err.name === "AbortError";
-        // Fast retry once for idempotent GET if Render is waking up
-        if (isGet && attempt === 1) {
-          await new Promise((r) => setTimeout(r, 1200));
-          return fetchWithTimeout(2);
-        }
-        if (isAbort) {
-          throw new Error("Server is waking up. Please refresh or retry in a few seconds.");
-        }
-        throw new Error("Unable to connect to the server.");
-      }
-    };
+        const isNetworkErr = err instanceof TypeError || isAbort || (err.message && (err.message.includes("fetch") || err.message.includes("network")));
+        
+        const wakingErr = new ApiError(
+          isAbort ? "Server is waking up. Connection timed out." : "Server is waking up. Please retry in a moment.",
+          "BACKEND_WAKING",
+          isAbort ? 504 : 0
+        );
 
-    response = await fetchWithTimeout(1);
+        if (retryOnWaking && attempt <= maxRetries) {
+          backendStatusManager.notifyWaking("Server is waking up. Your data is safe. Retrying automatically...", attempt);
+          const delay = backoffDelays[attempt - 1] || 5000;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          lastError = wakingErr;
+          continue;
+        }
 
-    if (response.status === 401) {
-      this.removeToken();
-      if (typeof window !== "undefined" && window.location.pathname !== "/login" && window.location.pathname !== "/register") {
-        window.location.href = "/login";
+        if (isNetworkErr || isAbort) {
+          backendStatusManager.notifyWaking("Server is waking up. Please retry in a moment.", attempt);
+          throw wakingErr;
+        }
+
+        throw (err instanceof ApiError ? err : new ApiError(err.message || "An error occurred.", "SERVER_ERROR", 0));
       }
-      throw new Error("Session expired. Please sign in again.");
     }
 
-    if (!response.ok) {
-      let errorDetail = "An error occurred.";
-      try {
-        const errorData = await response.json();
-        errorDetail = errorData.detail || errorDetail;
-      } catch {
-        if (response.status === 500 || response.status === 502 || response.status === 503 || response.status === 504) {
-          errorDetail = "Server unavailable or waking up. Please try again in a moment.";
-        }
-      }
-      throw new Error(errorDetail);
-    }
-
-    // Handle file streams/blobs (e.g. downloads)
-    const contentType = response.headers.get("content-type");
-    if (contentType && (contentType.includes("csv") || contentType.includes("sheet") || contentType.includes("excel") || contentType.includes("octet-stream") || contentType.includes("application/vnd"))) {
-      return response.blob();
-    }
-
-    return response.json();
+    throw (lastError || new ApiError("Server is waking up. Please try again.", "BACKEND_WAKING", 504));
   }
 
   async login(email: string, password: string): Promise<{ access_token: string; token_type: string; user?: User }> {
@@ -390,10 +584,13 @@ class ApiClient {
     max_pages_per_site?: number;
     requested_fields?: string[];
     required_fields?: string[];
+    client_request_id?: string;
   }): Promise<ScrapingTask & { fast_verified_results?: Lead[] }> {
     const res = await this.request("/api/tasks", {
       method: "POST",
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      maxRetries: 2,
+      retryOnWaking: true
     });
     this.clearCache("tasks");
     this.clearCache("overview");

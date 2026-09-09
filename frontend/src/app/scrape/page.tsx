@@ -4,14 +4,14 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Sparkles, Search, MapPin, Layers, Sliders, CheckCircle2, 
-  HelpCircle, Compass, ListTodo, Play, ShieldCheck
+  HelpCircle, Compass, ListTodo, Play, ShieldCheck, Loader2
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/AppLayout";
 
 export default function ScrapeCreatorPage() {
   const router = useRouter();
-  const { showToast } = useToast();
+  const { showToast, backendStatus } = useToast();
 
   const [location, setLocation] = useState("");
   const [keyword, setKeyword] = useState("");
@@ -19,6 +19,7 @@ export default function ScrapeCreatorPage() {
   const [maxResults, setMaxResults] = useState(50);
   const [maxPages, setMaxPages] = useState(15);
   const [loading, setLoading] = useState(false);
+  const [isWaking, setIsWaking] = useState(false);
 
   const [requestedFields, setRequestedFields] = useState<string[]>([
     "name", "category", "phone", "alt_phone", "email", "website", "address", "city", "state", "pincode", "whatsapp", "people", "designation", "facebook", "instagram", "linkedin", "youtube"
@@ -66,6 +67,11 @@ export default function ScrapeCreatorPage() {
     }
 
     setLoading(true);
+    setIsWaking(false);
+
+    // Generate unique client request id for idempotency
+    const clientRequestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
     try {
       const task = await api.createTask({
         location: location.trim(),
@@ -74,14 +80,22 @@ export default function ScrapeCreatorPage() {
         max_results: maxResults,
         max_pages_per_site: maxPages,
         requested_fields: requestedFields,
-        required_fields: []
+        required_fields: [],
+        client_request_id: clientRequestId
       });
       showToast("Scraping task initiated successfully!", "success");
       router.push(`/tasks/${task.public_task_id}`);
     } catch (err: any) {
-      showToast(err.message || "Failed to start scraping task.", "error");
+      const waking = err?.isBackendWaking || err?.code === "BACKEND_WAKING" || err?.message?.includes("waking up");
+      if (waking) {
+        setIsWaking(true);
+        showToast("Server is temporarily unavailable. Please try again.", "error");
+      } else {
+        showToast(err.message || "Failed to start scraping task.", "error");
+      }
     } finally {
       setLoading(false);
+      setIsWaking(false);
     }
   };
 
@@ -252,10 +266,19 @@ export default function ScrapeCreatorPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl py-3.5 shadow-md shadow-orange-500/20 active:scale-[0.98] transition-all disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl py-3.5 shadow-md shadow-orange-500/20 active:scale-[0.98] transition-all disabled:opacity-75 cursor-pointer disabled:cursor-not-allowed"
             >
-              <Play className="h-4 w-4 fill-white" />
-              {loading ? "Starting Scrape..." : "START SCRAPING"}
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin text-white" />
+                  <span>{backendStatus.isWaking || isWaking ? "Server is waking up. Retrying..." : "Starting Scrape..."}</span>
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 fill-white" />
+                  <span>START SCRAPING</span>
+                </>
+              )}
             </button>
           </div>
         </div>

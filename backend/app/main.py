@@ -61,6 +61,7 @@ def parse_cors_origins():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=parse_cors_origins(),
+    allow_origin_regex=r"^https:\/\/.*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -74,6 +75,11 @@ app.include_router(admin.router, prefix="/api")
 app.include_router(organizations.router, prefix="/api")
 app.include_router(campaigns.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
+
+@app.get("/health", tags=["Health"])
+@app.get("/api/health", tags=["Health"])
+def health():
+    return {"status": "ok"}
 
 @app.get("/", include_in_schema=False)
 def root():

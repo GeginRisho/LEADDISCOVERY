@@ -10,9 +10,11 @@ import { api, ScrapingTask } from "@/lib/api";
 import { useToast } from "@/components/AppLayout";
 
 export default function HistoryPage() {
-  const { showToast } = useToast();
+  const { showToast, backendStatus } = useToast();
   const [tasks, setTasks] = useState<ScrapingTask[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isWaking, setIsWaking] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
 
   // Search & Filter state
@@ -21,33 +23,40 @@ export default function HistoryPage() {
 
   const isFetchingRef = useRef(false);
 
-  useEffect(() => {
-    let isCurrent = true;
-    async function loadTasks() {
-      if (isFetchingRef.current) return;
-      isFetchingRef.current = true;
-      try {
-        const data = await api.getTasks();
-        if (isCurrent) {
-          setTasks(data);
-        }
-      } catch (err: any) {
-        if (isCurrent) {
-          showToast(err.message || "Failed to load task history.", "error");
-        }
-      } finally {
-        if (isCurrent) {
-          setLoading(false);
-          isFetchingRef.current = false;
-        }
-      }
-    }
-    loadTasks();
-    return () => {
-      isCurrent = false;
+  const loadTasks = React.useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api.getTasks();
+      setTasks(data);
+      setError(null);
+      setIsWaking(false);
+    } catch (err: any) {
+      const waking = err?.isBackendWaking || err?.code === "BACKEND_WAKING" || err?.message?.includes("waking up");
+      setIsWaking(!!waking);
+      const msg = waking
+        ? "Server is waking up. Your data is safe. Retrying automatically..."
+        : (err.message || "Failed to load task history.");
+      setError(msg);
+      showToast(msg, waking ? "info" : "error");
+    } finally {
+      setLoading(false);
       isFetchingRef.current = false;
-    };
-  }, []);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    loadTasks();
+  }, [loadTasks]);
+
+  // Auto-retry when backend finishes cold starting
+  useEffect(() => {
+    if (error && !backendStatus.isWaking && !loading) {
+      loadTasks();
+    }
+  }, [backendStatus.isWaking, error, loading, loadTasks]);
 
   const handleSecureExport = async (taskId: string, format: "csv" | "excel") => {
     setExporting(`${taskId}_${format}`);
@@ -137,6 +146,26 @@ export default function HistoryPage() {
           {[...Array(3)].map((_, i) => (
             <div key={i} className="p-5 bg-white border border-gray-200 rounded-2xl shadow-xs animate-pulse h-28"></div>
           ))}
+        </div>
+      ) : error ? (
+        <div className="bg-white border border-amber-200 rounded-2xl py-12 px-6 flex flex-col items-center justify-center text-center shadow-xs">
+          <div className="h-12 w-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mb-3">
+            <Loader2 className="h-6 w-6 animate-spin text-amber-600" />
+          </div>
+          <h4 className="text-sm font-bold text-gray-900">
+            {isWaking ? "Server is waking up" : "Task history temporarily unavailable"}
+          </h4>
+          <p className="text-xs text-gray-500 mt-1 max-w-sm">
+            {isWaking 
+              ? "Your data is safe. The Render backend is spinning up and we are retrying automatically." 
+              : error}
+          </p>
+          <button
+            onClick={() => loadTasks()}
+            className="mt-4 flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs active:scale-[0.98]"
+          >
+            <Loader2 className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Retry Now
+          </button>
         </div>
       ) : tasks.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-2xl py-16 flex flex-col items-center justify-center text-center shadow-xs">

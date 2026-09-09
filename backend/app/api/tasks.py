@@ -205,10 +205,23 @@ def create_task(
     import time
     t_start = time.time()
 
+    # 0. Idempotency check: if client_request_id provided, return existing task if created recently
+    clean_req_id = payload.client_request_id.strip() if payload.client_request_id and payload.client_request_id.strip() else None
+    if clean_req_id:
+        fifteen_mins_ago = datetime.datetime.utcnow() - datetime.timedelta(minutes=15)
+        existing = db.query(ScrapingTask).filter(
+            ScrapingTask.client_request_id == clean_req_id,
+            ScrapingTask.user_id == current_user.id,
+            ScrapingTask.created_at >= fifteen_mins_ago
+        ).first()
+        if existing:
+            return existing
+
     # 1. Create task in DB with authenticated user's ID
     task = ScrapingTask(
         user_id=current_user.id,
         public_task_id="TEMP",
+        client_request_id=clean_req_id,
         location=payload.location,
         keyword=payload.keyword,
         radius=payload.radius,

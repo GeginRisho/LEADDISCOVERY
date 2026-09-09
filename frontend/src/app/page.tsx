@@ -19,42 +19,40 @@ interface DashboardStats {
 }
 
 export default function DashboardPage() {
-  const { showToast } = useToast();
+  const { showToast, backendStatus } = useToast();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentTasks, setRecentTasks] = useState<ScrapingTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadDashboardData() {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await api.getDashboardOverview();
-        if (isMounted) {
-          setStats(data.stats);
-          setRecentTasks(data.recent_tasks || []);
-        }
-      } catch (err: any) {
-        if (isMounted) {
-          setError("Unable to load dashboard statistics");
-          showToast("Unable to load dashboard statistics", "error");
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
+  const loadDashboardData = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api.getDashboardOverview();
+      setStats(data.stats);
+      setRecentTasks(data.recent_tasks || []);
+      setError(null);
+    } catch (err: any) {
+      const waking = err?.isBackendWaking || err?.code === "BACKEND_WAKING" || err?.message?.includes("waking up");
+      const msg = waking ? "Server is waking up. Your data is safe. Retrying..." : "Unable to load dashboard statistics";
+      setError(msg);
+      showToast(msg, waking ? "info" : "error");
+    } finally {
+      setLoading(false);
     }
-
-    loadDashboardData();
-
-    return () => {
-      isMounted = false;
-    };
   }, [showToast]);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
+
+  // Auto-retry when backend finishes waking
+  useEffect(() => {
+    if (error && !backendStatus.isWaking && !loading) {
+      loadDashboardData();
+    }
+  }, [backendStatus.isWaking, error, loading, loadDashboardData]);
 
   const renderStatValue = (val: number | undefined) => {
     if (loading || stats === null) {
