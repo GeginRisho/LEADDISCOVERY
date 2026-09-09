@@ -12,13 +12,14 @@ def create_database_if_not_exists():
         url = make_url(db_url)
         db_name = url.database
         
-        # Connect to the default 'postgres' database to create the app-specific DB
+        # Connect to the default 'postgres' database with a short timeout
         conn = psycopg2.connect(
             host=url.host or "localhost",
             port=url.port or 5432,
             user=url.username or "postgres",
             password=url.password or "",
-            database="postgres"
+            database="postgres",
+            connect_timeout=3
         )
         conn.autocommit = True
         cursor = conn.cursor()
@@ -26,25 +27,19 @@ def create_database_if_not_exists():
         cursor.execute(f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{db_name}'")
         exists = cursor.fetchone()
         if not exists:
-            print(f"Database '{db_name}' does not exist. Creating...")
             cursor.execute(f"CREATE DATABASE {db_name}")
-            print(f"Database '{db_name}' created successfully.")
-        else:
-            print(f"Database '{db_name}' already exists.")
         
         cursor.close()
         conn.close()
-    except Exception as e:
-        print(f"Warning: Database check/creation failed: {e}. Attempting connection anyway.")
+    except Exception:
+        pass
 
-# Auto-initialize database on import
-create_database_if_not_exists()
-
+# Safe database environment detection without logging credentials
 db_url_parsed = make_url(settings.DATABASE_URL)
 db_host = db_url_parsed.host or "localhost"
 db_name = db_url_parsed.database or "leaddiscovery"
-db_type = "SQLite Local" if "sqlite" in settings.DATABASE_URL.lower() else ("Neon PostgreSQL" if "neon.tech" in settings.DATABASE_URL.lower() else "PostgreSQL Database")
-print(f"Connected to database environment: {db_type} | Host: {db_host} | Database: {db_name}")
+db_type = "SQLite Local" if "sqlite" in settings.DATABASE_URL.lower() else ("Neon PostgreSQL" if "neon.tech" in settings.DATABASE_URL.lower() else "PostgreSQL")
+print(f"[STARTUP] Creating database engine ({db_type})")
 
 engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -125,8 +120,6 @@ def migrate_schema(eng):
                     conn.execute(text(stmt))
             except Exception:
                 pass
-
-migrate_schema(engine)
 
 def get_db():
     db = SessionLocal()

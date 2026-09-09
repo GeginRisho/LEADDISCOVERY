@@ -4,38 +4,56 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 
-# Load local environment files before config import
+print("[STARTUP] Process starting")
+print("[STARTUP] Loading configuration")
 load_dotenv()
 
+import threading
+from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import engine, Base, migrate_schema
 from app.api import auth, tasks, leads, admin, organizations, campaigns, search
 
-# Create database tables automatically on startup
-try:
-    print("Initializing database tables...")
-    Base.metadata.create_all(bind=engine)
-    migrate_schema(engine)
-    print("Database tables initialized successfully.")
-    
-    # Auto-seed Tamil Nadu districts & default users
-    from app.core.database import SessionLocal
-    from app.core.tn_districts import seed_tn_districts
-    from app.api.auth import seed_default_users
-    
-    db_init = SessionLocal()
+print("[STARTUP] Registering routes")
+
+def init_db_background():
+    """
+    Non-blocking background worker for DB table creation, migrations, and seeding.
+    Runs asynchronously in a separate thread so server port binding is never blocked.
+    """
+    print("[STARTUP] Database initialization started")
     try:
-        seed_tn_districts(db_init)
-        seed_default_users(db_init)
-    finally:
-        db_init.close()
-except Exception as e:
-    print(f"Error initializing database tables: {e}")
+        Base.metadata.create_all(bind=engine)
+        migrate_schema(engine)
+        
+        from app.core.database import SessionLocal
+        from app.core.tn_districts import seed_tn_districts
+        from app.api.auth import seed_default_users
+        
+        db_init = SessionLocal()
+        try:
+            seed_tn_districts(db_init)
+            seed_default_users(db_init)
+        finally:
+            db_init.close()
+        print("[STARTUP] Database initialization completed")
+    except Exception as e:
+        print(f"[STARTUP] Database initialization notice: {e}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("[STARTUP] FastAPI application ready")
+    print("[STARTUP] Health endpoint available at /health")
+    # Launch background DB sync without blocking HTTP server availability
+    threading.Thread(target=init_db_background, daemon=True, name="db_init_worker").start()
+    yield
+    print("[SHUTDOWN] Application shutting down")
 
 app = FastAPI(
     title="Web Scraping & Lead Discovery API",
     description="API for managing automated scraping tasks and leads extraction.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Enable CORS for frontend integration
