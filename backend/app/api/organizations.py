@@ -1,7 +1,7 @@
 import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, or_, and_
 from app.core.database import get_db
 from app.models.models import (
@@ -202,7 +202,19 @@ def list_organizations(
 
     total = query.count()
     offset = (page - 1) * limit
-    orgs = query.order_by(Organization.updated_at.desc()).offset(offset).limit(limit).all()
+    orgs = (
+        query.options(
+            selectinload(Organization.website),
+            selectinload(Organization.phone_numbers),
+            selectinload(Organization.email_addresses),
+            selectinload(Organization.social_links),
+            selectinload(Organization.branches),
+        )
+        .order_by(Organization.updated_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
     items = []
     for o in orgs:
